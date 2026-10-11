@@ -1,0 +1,971 @@
+Mplus VERSION 7
+MUTHEN & MUTHEN
+04/26/2026  11:26 AM
+
+INPUT INSTRUCTIONS
+
+  TITLE:      Wave 1 CAWI LCA Sensitivity Analysis for 3 LC - Replicated winner model with sociodemographic predictors (R3STEP)
+
+  DATA:       FILE IS ../Data_LCA.dat;
+
+  VARIABLE:   NAMES ARE
+              pid hid EXT1 MID1 FTM1 INR1 NDWO1 NDSS1
+              NDSO1 SPEE1 BO1 TGANC GENF MIGY AGET1 AGET3
+              EDTERT EDNA EMPP EMPNO EMPRET EMPNA KIDY KIDNA
+              INCT1 INCT3 INCNA PCONS;
+
+              IDVARIABLE IS pid;
+
+              USEVARIABLES ARE
+              EXT1 MID1 FTM1 INR1 NDWO1 NDSS1 NDSO1 BO1 SPEE1;
+
+              CATEGORICAL ARE
+              EXT1 MID1 FTM1 INR1 NDWO1 NDSS1 NDSO1 BO1 SPEE1;
+
+              MISSING IS ALL(-99);
+
+              CLUSTER IS hid;
+
+              CLASSES ARE c(3);
+
+              AUXILIARY ARE
+                      TGANC (R3STEP)
+                           !Ref: Anker
+                      AGET1 (R3STEP) AGET3 (R3STEP)
+                           !Ref: medium (2nd tertile)
+                      GENF (R3STEP)
+                           !Ref: Not female
+                      MIGY (R3STEP)
+                           !Ref: No migration
+                      EDTERT (R3STEP) EDNA (R3STEP)
+                           !Ref: Non-tertiary (ISCED <5)
+                      EMPP (R3STEP) EMPNO (R3STEP) EMPRET (R3STEP) EMPNA (R3STEP)
+                           !Ref: Full-time
+                      KIDY (R3STEP) KIDNA (R3STEP)
+                           !Ref: No child in hh
+                      INCT1 (R3STEP) INCT3 (R3STEP) INCNA (R3STEP)
+                           !Ref: Medium
+                      PCONS (R3STEP);
+                           !Ref: No
+
+
+  ANALYSIS:   TYPE IS MIXTURE COMPLEX;
+              STARTS ARE 0;
+              OPTSEED IS 602305;
+
+  OUTPUT:     SVALUES CINTERVAL TECH11;
+
+
+  SAVEDATA: FILE IS wave1_cawi_sensan_final.dat; FORMAT IS FREE; SAVE = CPROBABILITIES;
+
+
+
+*** WARNING
+  Input line exceeded 90 characters. Some input may be truncated.
+  TITLE:      Wave 1 CAWI LCA Sensitivity Analysis for 3 LC - Replicated winner model with sociodemographic predictors (R3STEP)
+   1 WARNING(S) FOUND IN THE INPUT INSTRUCTIONS
+
+
+
+Wave 1 CAWI LCA Sensitivity Analysis for 3 LC - Replicated winner model with sociodemographic predictors (R3STEP)
+
+SUMMARY OF ANALYSIS
+
+Number of groups                                                 1
+Number of observations                                        6467
+
+Number of dependent variables                                    9
+Number of independent variables                                  0
+Number of continuous latent variables                            0
+Number of categorical latent variables                           1
+
+Observed dependent variables
+
+  Binary and ordered categorical (ordinal)
+   EXT1        MID1        FTM1        INR1        NDWO1       NDSS1
+   NDSO1       BO1         SPEE1
+
+Observed auxiliary variables
+   TGANC       AGET1       AGET3       GENF        MIGY        EDTERT
+   EDNA        EMPP        EMPNO       EMPRET      EMPNA       KIDY
+   KIDNA       INCT1       INCT3       INCNA       PCONS
+
+Categorical latent variables
+   C
+
+Variables with special functions
+
+  Cluster variable      HID
+  ID variable           PID
+
+Estimator                                                      MLR
+Information matrix                                        OBSERVED
+Optimization Specifications for the Quasi-Newton Algorithm for
+Continuous Outcomes
+  Maximum number of iterations                                 100
+  Convergence criterion                                  0.100D-05
+Optimization Specifications for the EM Algorithm
+  Maximum number of iterations                                 500
+  Convergence criteria
+    Loglikelihood change                                 0.100D-06
+    Relative loglikelihood change                        0.100D-06
+    Derivative                                           0.100D-05
+Optimization Specifications for the M step of the EM Algorithm for
+Categorical Latent variables
+  Number of M step iterations                                    1
+  M step convergence criterion                           0.100D-05
+  Basis for M step termination                           ITERATION
+Optimization Specifications for the M step of the EM Algorithm for
+Censored, Binary or Ordered Categorical (Ordinal), Unordered
+Categorical (Nominal) and Count Outcomes
+  Number of M step iterations                                    1
+  M step convergence criterion                           0.100D-05
+  Basis for M step termination                           ITERATION
+  Maximum value for logit thresholds                            15
+  Minimum value for logit thresholds                           -15
+  Minimum expected cell size for chi-square              0.100D-01
+Maximum number of iterations for H1                           2000
+Convergence criterion for H1                             0.100D-03
+Optimization algorithm                                         EMA
+Random Starts Specifications
+  Random seed for analysis                                  602305
+Link                                                         LOGIT
+
+Input data file(s)
+  ../Data_LCA.dat
+Input data format  FREE
+
+
+SUMMARY OF DATA
+
+     Number of missing data patterns             1
+     Number of y missing data patterns           0
+     Number of u missing data patterns           1
+     Number of clusters        5416
+
+
+
+COVARIANCE COVERAGE OF DATA
+
+Minimum covariance coverage value   0.100
+
+
+UNIVARIATE PROPORTIONS AND COUNTS FOR CATEGORICAL VARIABLES
+
+    EXT1
+      Category 1    0.875     5661.000
+      Category 2    0.125      806.000
+    MID1
+      Category 1    0.868     5616.000
+      Category 2    0.132      851.000
+    FTM1
+      Category 1    0.866     5602.000
+      Category 2    0.134      865.000
+    INR1
+      Category 1    0.838     5418.000
+      Category 2    0.162     1049.000
+    NDWO1
+      Category 1    0.602     3890.000
+      Category 2    0.398     2577.000
+    NDSS1
+      Category 1    0.480     3102.000
+      Category 2    0.520     3365.000
+    NDSO1
+      Category 1    0.700     4528.000
+      Category 2    0.300     1939.000
+    BO1
+      Category 1    0.916     5925.000
+      Category 2    0.084      542.000
+    SPEE1
+      Category 1    0.947     6126.000
+      Category 2    0.053      341.000
+
+
+     IN THE OPTIMIZATION, ONE OR MORE LOGIT THRESHOLDS APPROACHED AND WERE SET
+     AT THE EXTREME VALUES.  EXTREME VALUES ARE -15.000 AND 15.000.
+     THE FOLLOWING THRESHOLDS WERE SET AT THESE VALUES:
+     * THRESHOLD 1 OF CLASS INDICATOR NDSS1 FOR CLASS 1 AT ITERATION 10
+     * THRESHOLD 1 OF CLASS INDICATOR NDSO1 FOR CLASS 1 AT ITERATION 88
+     * THRESHOLD 1 OF CLASS INDICATOR NDSO1 FOR CLASS 2 AT ITERATION 12
+     * THRESHOLD 1 OF CLASS INDICATOR NDSS1 FOR CLASS 3 AT ITERATION 54
+
+
+
+
+
+THE MODEL ESTIMATION TERMINATED NORMALLY
+
+
+
+MODEL FIT INFORMATION
+
+Number of Free Parameters                       29
+
+Loglikelihood
+
+          H0 Value                      -24006.885
+          H0 Scaling Correction Factor      1.2114
+            for MLR
+
+Information Criteria
+
+          Akaike (AIC)                   48071.770
+          Bayesian (BIC)                 48268.230
+          Sample-Size Adjusted BIC       48176.075
+            (n* = (n + 2) / 24)
+
+Chi-Square Test of Model Fit for the Binary and Ordered Categorical
+(Ordinal) Outcomes
+
+          Pearson Chi-Square
+
+          Value                           2128.661
+          Degrees of Freedom                   482
+          P-Value                           0.0000
+
+          Likelihood Ratio Chi-Square
+
+          Value                           1313.571
+          Degrees of Freedom                   482
+          P-Value                           0.0000
+
+
+
+FINAL CLASS COUNTS AND PROPORTIONS FOR THE LATENT CLASSES
+BASED ON THE ESTIMATED MODEL
+
+    Latent
+   Classes
+
+       1       1875.45929          0.29000
+       2       4192.51682          0.64829
+       3        399.02389          0.06170
+
+
+FINAL CLASS COUNTS AND PROPORTIONS FOR THE LATENT CLASS PATTERNS
+BASED ON ESTIMATED POSTERIOR PROBABILITIES
+
+    Latent
+   Classes
+
+       1       1875.45929          0.29000
+       2       4192.51682          0.64829
+       3        399.02389          0.06170
+
+
+CLASSIFICATION QUALITY
+
+     Entropy                         0.913
+
+
+CLASSIFICATION OF INDIVIDUALS BASED ON THEIR MOST LIKELY LATENT CLASS MEMBERSHIP
+
+Class Counts and Proportions
+
+    Latent
+   Classes
+
+       1             1926          0.29782
+       2             4309          0.66631
+       3              232          0.03587
+
+
+Average Latent Class Probabilities for Most Likely Latent Class Membership (Row)
+by Latent Class (Column)
+
+           1        2        3
+
+    1   0.973    0.000    0.027
+    2   0.000    0.966    0.034
+    3   0.008    0.133    0.858
+
+
+MODEL RESULTS
+
+                                                    Two-Tailed
+                    Estimate       S.E.  Est./S.E.    P-Value
+
+Latent Class 1
+
+ Thresholds
+    EXT1$1             3.084      0.271     11.380      0.000
+    MID1$1             1.258      0.072     17.516      0.000
+    FTM1$1             1.926      0.073     26.543      0.000
+    INR1$1             1.646      0.065     25.406      0.000
+    NDWO1$1           -0.044      0.074     -0.590      0.555
+    NDSS1$1           15.000      0.000    999.000    999.000
+    NDSO1$1          -15.000      0.000    999.000    999.000
+    BO1$1              2.933      0.159     18.419      0.000
+    SPEE1$1            2.475      0.098     25.336      0.000
+
+Latent Class 2
+
+ Thresholds
+    EXT1$1             1.830      0.072     25.331      0.000
+    MID1$1             2.241      0.065     34.507      0.000
+    FTM1$1             1.782      0.048     36.783      0.000
+    INR1$1             1.637      0.045     36.009      0.000
+    NDWO1$1            0.504      0.047     10.823      0.000
+    NDSS1$1           -1.403      0.181     -7.750      0.000
+    NDSO1$1           15.000      0.000    999.000    999.000
+    BO1$1              2.906      0.078     37.153      0.000
+    SPEE1$1            3.319      0.096     34.566      0.000
+
+Latent Class 3
+
+ Thresholds
+    EXT1$1             0.570      0.163      3.489      0.000
+    MID1$1             2.409      0.519      4.645      0.000
+    FTM1$1             2.810      0.764      3.676      0.000
+    INR1$1             1.675      0.264      6.353      0.000
+    NDWO1$1            2.206      0.419      5.268      0.000
+    NDSS1$1           15.000      0.000    999.000    999.000
+    NDSO1$1            1.664      0.624      2.667      0.008
+    BO1$1             -0.305      1.041     -0.293      0.769
+    SPEE1$1            1.969      0.482      4.089      0.000
+
+Categorical Latent Variables
+
+ Means
+    C#1                1.548      0.557      2.777      0.005
+    C#2                2.352      0.559      4.211      0.000
+
+
+RESULTS IN PROBABILITY SCALE
+
+Latent Class 1
+
+ EXT1
+    Category 1         0.956      0.011     84.307      0.000
+    Category 2         0.044      0.011      3.859      0.000
+ MID1
+    Category 1         0.779      0.012     62.911      0.000
+    Category 2         0.221      0.012     17.885      0.000
+ FTM1
+    Category 1         0.873      0.008    108.354      0.000
+    Category 2         0.127      0.008     15.788      0.000
+ INR1
+    Category 1         0.838      0.009     95.482      0.000
+    Category 2         0.162      0.009     18.414      0.000
+ NDWO1
+    Category 1         0.489      0.018     26.477      0.000
+    Category 2         0.511      0.018     27.657      0.000
+ NDSS1
+    Category 1         1.000      0.000      0.000      1.000
+    Category 2         0.000      0.000      0.000      1.000
+ NDSO1
+    Category 1         0.000      0.000      0.000      1.000
+    Category 2         1.000      0.000      0.000      1.000
+ BO1
+    Category 1         0.949      0.008    124.240      0.000
+    Category 2         0.051      0.008      6.615      0.000
+ SPEE1
+    Category 1         0.922      0.007    131.832      0.000
+    Category 2         0.078      0.007     11.101      0.000
+
+Latent Class 2
+
+ EXT1
+    Category 1         0.862      0.009    100.120      0.000
+    Category 2         0.138      0.009     16.067      0.000
+ MID1
+    Category 1         0.904      0.006    160.202      0.000
+    Category 2         0.096      0.006     17.034      0.000
+ FTM1
+    Category 1         0.856      0.006    143.299      0.000
+    Category 2         0.144      0.006     24.111      0.000
+ INR1
+    Category 1         0.837      0.006    135.057      0.000
+    Category 2         0.163      0.006     26.276      0.000
+ NDWO1
+    Category 1         0.623      0.011     57.048      0.000
+    Category 2         0.377      0.011     34.475      0.000
+ NDSS1
+    Category 1         0.197      0.029      6.884      0.000
+    Category 2         0.803      0.029     27.992      0.000
+ NDSO1
+    Category 1         1.000      0.000      0.000      1.000
+    Category 2         0.000      0.000      0.000      1.000
+ BO1
+    Category 1         0.948      0.004    246.505      0.000
+    Category 2         0.052      0.004     13.485      0.000
+ SPEE1
+    Category 1         0.965      0.003    298.121      0.000
+    Category 2         0.035      0.003     10.793      0.000
+
+Latent Class 3
+
+ EXT1
+    Category 1         0.639      0.038     16.949      0.000
+    Category 2         0.361      0.038      9.586      0.000
+ MID1
+    Category 1         0.917      0.039     23.368      0.000
+    Category 2         0.083      0.039      2.102      0.036
+ FTM1
+    Category 1         0.943      0.041     23.041      0.000
+    Category 2         0.057      0.041      1.387      0.165
+ INR1
+    Category 1         0.842      0.035     24.041      0.000
+    Category 2         0.158      0.035      4.504      0.000
+ NDWO1
+    Category 1         0.901      0.037     24.067      0.000
+    Category 2         0.099      0.037      2.652      0.008
+ NDSS1
+    Category 1         1.000      0.000      0.000      1.000
+    Category 2         0.000      0.000      0.000      1.000
+ NDSO1
+    Category 1         0.841      0.084     10.066      0.000
+    Category 2         0.159      0.084      1.906      0.057
+ BO1
+    Category 1         0.424      0.254      1.669      0.095
+    Category 2         0.576      0.254      2.264      0.024
+ SPEE1
+    Category 1         0.878      0.052     16.957      0.000
+    Category 2         0.122      0.052      2.366      0.018
+
+
+LATENT CLASS ODDS RATIO RESULTS
+
+Latent Class 1 Compared to Latent Class 2
+
+ EXT1
+    Category > 1       0.285      0.066      4.350      0.000
+ MID1
+    Category > 1       2.674      0.215     12.424      0.000
+ FTM1
+    Category > 1       0.866      0.072     11.991      0.000
+ INR1
+    Category > 1       0.991      0.077     12.928      0.000
+ NDWO1
+    Category > 1       1.729      0.109     15.805      0.000
+ NDSS1
+    Category > 1       0.000      0.000    999.000    999.000
+ NDSO1
+    Category > 1   *********      0.000    999.000    999.000
+ BO1
+    Category > 1       0.973      0.171      5.694      0.000
+ SPEE1
+    Category > 1       2.326      0.303      7.679      0.000
+
+Latent Class 1 Compared to Latent Class 3
+
+ EXT1
+    Category > 1       0.081      0.022      3.722      0.000
+ MID1
+    Category > 1       3.161      1.769      1.787      0.074
+ FTM1
+    Category > 1       2.420      1.849      1.309      0.190
+ INR1
+    Category > 1       1.029      0.287      3.581      0.000
+ NDWO1
+    Category > 1       9.479      3.695      2.566      0.010
+ NDSS1
+    Category > 1       1.000      0.000    999.000    999.000
+ NDSO1
+    Category > 1   *********      0.000    999.000    999.000
+ BO1
+    Category > 1       0.039      0.037      1.050      0.294
+ SPEE1
+    Category > 1       0.603      0.302      1.999      0.046
+
+Latent Class 2 Compared to Latent Class 3
+
+ EXT1
+    Category > 1       0.284      0.047      6.093      0.000
+ MID1
+    Category > 1       1.182      0.656      1.802      0.072
+ FTM1
+    Category > 1       2.795      2.152      1.299      0.194
+ INR1
+    Category > 1       1.039      0.291      3.569      0.000
+ NDWO1
+    Category > 1       5.484      2.211      2.481      0.013
+ NDSS1
+    Category > 1   *********      0.000    999.000    999.000
+ NDSO1
+    Category > 1       0.000      0.000    999.000    999.000
+ BO1
+    Category > 1       0.040      0.042      0.959      0.338
+ SPEE1
+    Category > 1       0.259      0.131      1.988      0.047
+
+
+QUALITY OF NUMERICAL RESULTS
+
+     Condition Number for the Information Matrix              0.395E-03
+       (ratio of smallest to largest eigenvalue)
+
+
+TESTS OF CATEGORICAL LATENT VARIABLE MULTINOMIAL LOGISTIC REGRESSIONS USING
+THE 3-STEP PROCEDURE
+
+                                                    Two-Tailed
+                    Estimate       S.E.  Est./S.E.    P-Value
+
+ C#1      ON
+    TGANC             -0.143      0.645     -0.222      0.824
+    AGET1              0.562      0.596      0.944      0.345
+    AGET3             -0.542      0.878     -0.618      0.537
+    GENF               2.577      0.503      5.127      0.000
+    MIGY               2.542      0.639      3.981      0.000
+    EDTERT           -41.303      1.366    -30.229      0.000
+    EDNA             -25.586      0.466    -54.920      0.000
+    EMPP              14.362      0.080    180.385      0.000
+    EMPNO             21.861      0.086    253.473      0.000
+    EMPRET            -2.180      1.644     -1.326      0.185
+    EMPNA            -20.453      0.482    -42.402      0.000
+    KIDY              19.485      0.068    286.364      0.000
+    KIDNA             -3.241      1.093     -2.965      0.003
+    INCT1             -1.880      0.083    -22.688      0.000
+    INCT3              1.727      0.076     22.587      0.000
+    INCNA            -25.156      0.095   -263.584      0.000
+    PCONS             34.340      0.067    509.159      0.000
+
+ C#2      ON
+    TGANC             -0.034      0.647     -0.053      0.957
+    AGET1              0.751      0.596      1.260      0.208
+    AGET3             -0.555      0.871     -0.638      0.524
+    GENF               2.754      0.502      5.482      0.000
+    MIGY               2.372      0.641      3.702      0.000
+    EDTERT           -41.207      1.366    -30.167      0.000
+    EDNA             -25.584      0.000    999.000      0.000
+    EMPP              14.486      0.000    999.000      0.000
+    EMPNO             22.212      0.000    999.000      0.000
+    EMPRET            -1.773      1.641     -1.081      0.280
+    EMPNA            -20.901      0.000    999.000      0.000
+    KIDY              19.334      0.000    999.000      0.000
+    KIDNA             -3.789      1.084     -3.497      0.000
+    INCT1             -1.992      0.000    999.000      0.000
+    INCT3              1.815      0.000    999.000      0.000
+    INCNA            -24.974      0.000    999.000      0.000
+    PCONS             34.521      0.000    999.000      0.000
+
+
+Parameterization using Reference Class 1
+
+ C#2      ON
+    TGANC              0.109      0.067      1.624      0.104
+    AGET1              0.189      0.064      2.965      0.003
+    AGET3             -0.013      0.121     -0.109      0.913
+    GENF               0.178      0.059      3.031      0.002
+    MIGY              -0.171      0.070     -2.438      0.015
+    EDTERT             0.096      0.060      1.614      0.107
+    EDNA               0.002      0.466      0.005      0.996
+    EMPP               0.124      0.080      1.555      0.120
+    EMPNO              0.351      0.086      4.071      0.000
+    EMPRET             0.407      0.133      3.065      0.002
+    EMPNA             -0.448      0.482     -0.929      0.353
+    KIDY              -0.151      0.068     -2.218      0.027
+    KIDNA             -0.548      0.185     -2.958      0.003
+    INCT1             -0.112      0.083     -1.349      0.177
+    INCT3              0.088      0.076      1.152      0.249
+    INCNA              0.183      0.095      1.913      0.056
+    PCONS              0.181      0.067      2.681      0.007
+
+ C#3      ON
+    TGANC              0.143      0.645      0.222      0.824
+    AGET1             -0.562      0.596     -0.944      0.345
+    AGET3              0.542      0.878      0.618      0.537
+    GENF              -2.577      0.503     -5.127      0.000
+    MIGY              -2.542      0.639     -3.981      0.000
+    EDTERT            41.303      1.366     30.229      0.000
+    EDNA              25.586      0.466     54.920      0.000
+    EMPP             -14.362      0.080   -180.385      0.000
+    EMPNO            -21.861      0.086   -253.473      0.000
+    EMPRET             2.180      1.644      1.326      0.185
+    EMPNA             20.453      0.482     42.402      0.000
+    KIDY             -19.485      0.068   -286.364      0.000
+    KIDNA              3.241      1.093      2.965      0.003
+    INCT1              1.880      0.083     22.688      0.000
+    INCT3             -1.727      0.076    -22.587      0.000
+    INCNA             25.156      0.095    263.584      0.000
+    PCONS            -34.340      0.067   -509.159      0.000
+
+
+Parameterization using Reference Class 2
+
+ C#1      ON
+    TGANC             -0.109      0.067     -1.624      0.104
+    AGET1             -0.189      0.064     -2.965      0.003
+    AGET3              0.013      0.121      0.109      0.913
+    GENF              -0.178      0.059     -3.031      0.002
+    MIGY               0.171      0.070      2.438      0.015
+    EDTERT            -0.096      0.060     -1.614      0.107
+    EDNA              -0.002      0.466     -0.005      0.996
+    EMPP              -0.124      0.080     -1.555      0.120
+    EMPNO             -0.351      0.086     -4.071      0.000
+    EMPRET            -0.407      0.133     -3.065      0.002
+    EMPNA              0.448      0.482      0.929      0.353
+    KIDY               0.151      0.068      2.218      0.027
+    KIDNA              0.548      0.185      2.958      0.003
+    INCT1              0.112      0.083      1.349      0.177
+    INCT3             -0.088      0.076     -1.152      0.249
+    INCNA             -0.183      0.095     -1.913      0.056
+    PCONS             -0.181      0.067     -2.681      0.007
+
+ C#3      ON
+    TGANC              0.034      0.647      0.053      0.957
+    AGET1             -0.751      0.596     -1.260      0.208
+    AGET3              0.555      0.871      0.638      0.524
+    GENF              -2.754      0.502     -5.482      0.000
+    MIGY              -2.372      0.641     -3.702      0.000
+    EDTERT            41.207      1.366     30.167      0.000
+    EDNA              25.584      0.000  *********      0.000
+    EMPP             -14.486      0.000  *********      0.000
+    EMPNO            -22.212      0.000  *********      0.000
+    EMPRET             1.773      1.641      1.081      0.280
+    EMPNA             20.901      0.000  *********      0.000
+    KIDY             -19.334      0.000  *********      0.000
+    KIDNA              3.789      1.084      3.497      0.000
+    INCT1              1.992      0.000  *********      0.000
+    INCT3             -1.815      0.000  *********      0.000
+    INCNA             24.974      0.000  *********      0.000
+    PCONS            -34.521      0.000  *********      0.000
+
+
+
+CONFIDENCE INTERVALS OF MODEL RESULTS
+
+                  Lower .5%  Lower 2.5%    Lower 5%    Estimate    Upper 5%  Upper 2.5%   Upper .5%
+
+Latent Class 1
+
+ Thresholds
+    EXT1$1           2.386       2.553       2.638       3.084       3.530       3.615       3.782
+    MID1$1           1.073       1.117       1.140       1.258       1.376       1.399       1.443
+    FTM1$1           1.739       1.784       1.807       1.926       2.046       2.068       2.113
+    INR1$1           1.479       1.519       1.539       1.646       1.752       1.773       1.813
+    NDWO1$1         -0.234      -0.188      -0.165      -0.044       0.078       0.101       0.147
+    NDSS1$1         15.000      15.000      15.000      15.000      15.000      15.000      15.000
+    NDSO1$1        -15.000     -15.000     -15.000     -15.000     -15.000     -15.000     -15.000
+    BO1$1            2.523       2.621       2.671       2.933       3.195       3.245       3.343
+    SPEE1$1          2.223       2.283       2.314       2.475       2.635       2.666       2.726
+
+Latent Class 2
+
+ Thresholds
+    EXT1$1           1.644       1.688       1.711       1.830       1.948       1.971       2.016
+    MID1$1           2.074       2.114       2.134       2.241       2.348       2.369       2.409
+    FTM1$1           1.657       1.687       1.703       1.782       1.862       1.877       1.907
+    INR1$1           1.520       1.548       1.562       1.637       1.712       1.726       1.754
+    NDWO1$1          0.384       0.412       0.427       0.504       0.580       0.595       0.624
+    NDSS1$1         -1.869      -1.757      -1.700      -1.403      -1.105      -1.048      -0.937
+    NDSO1$1         15.000      15.000      15.000      15.000      15.000      15.000      15.000
+    BO1$1            2.704       2.752       2.777       2.906       3.034       3.059       3.107
+    SPEE1$1          3.071       3.130       3.161       3.319       3.477       3.507       3.566
+
+Latent Class 3
+
+ Thresholds
+    EXT1$1           0.149       0.250       0.301       0.570       0.839       0.890       0.991
+    MID1$1           1.073       1.392       1.556       2.409       3.262       3.425       3.744
+    FTM1$1           0.841       1.312       1.553       2.810       4.067       4.308       4.779
+    INR1$1           0.996       1.158       1.241       1.675       2.108       2.192       2.354
+    NDWO1$1          1.127       1.385       1.517       2.206       2.894       3.026       3.284
+    NDSS1$1         15.000      15.000      15.000      15.000      15.000      15.000      15.000
+    NDSO1$1          0.057       0.441       0.638       1.664       2.690       2.887       3.271
+    BO1$1           -2.987      -2.346      -2.018      -0.305       1.407       1.735       2.376
+    SPEE1$1          0.729       1.025       1.177       1.969       2.762       2.913       3.210
+
+Categorical Latent Variables
+
+ Means
+    C#1              0.112       0.455       0.631       1.548       2.464       2.640       2.983
+    C#2              0.913       1.257       1.433       2.352       3.271       3.447       3.791
+
+
+CONFIDENCE INTERVALS IN PROBABILITY SCALE
+
+Latent Class 1
+
+ EXT1
+    Category 1       0.927       0.934       0.938       0.956       0.975       0.978       0.985
+    Category 2       0.015       0.022       0.025       0.044       0.062       0.066       0.073
+ MID1
+    Category 1       0.747       0.754       0.758       0.779       0.799       0.803       0.811
+    Category 2       0.189       0.197       0.201       0.221       0.242       0.246       0.253
+ FTM1
+    Category 1       0.852       0.857       0.860       0.873       0.886       0.889       0.894
+    Category 2       0.106       0.111       0.114       0.127       0.140       0.143       0.148
+ INR1
+    Category 1       0.816       0.821       0.824       0.838       0.853       0.856       0.861
+    Category 2       0.139       0.144       0.147       0.162       0.176       0.179       0.184
+ NDWO1
+    Category 1       0.442       0.453       0.459       0.489       0.519       0.525       0.537
+    Category 2       0.463       0.475       0.481       0.511       0.541       0.547       0.558
+ NDSS1
+    Category 1       1.000       1.000       1.000       1.000       1.000       1.000       1.000
+    Category 2       0.000       0.000       0.000       0.000       0.000       0.000       0.000
+ NDSO1
+    Category 1       0.000       0.000       0.000       0.000       0.000       0.000       0.000
+    Category 2       1.000       1.000       1.000       1.000       1.000       1.000       1.000
+ BO1
+    Category 1       0.930       0.934       0.937       0.949       0.962       0.964       0.969
+    Category 2       0.031       0.036       0.038       0.051       0.063       0.066       0.070
+ SPEE1
+    Category 1       0.904       0.909       0.911       0.922       0.934       0.936       0.940
+    Category 2       0.060       0.064       0.066       0.078       0.089       0.091       0.096
+
+Latent Class 2
+
+ EXT1
+    Category 1       0.840       0.845       0.848       0.862       0.876       0.879       0.884
+    Category 2       0.116       0.121       0.124       0.138       0.152       0.155       0.160
+ MID1
+    Category 1       0.889       0.893       0.895       0.904       0.913       0.915       0.918
+    Category 2       0.082       0.085       0.087       0.096       0.105       0.107       0.111
+ FTM1
+    Category 1       0.841       0.844       0.846       0.856       0.866       0.868       0.871
+    Category 2       0.129       0.132       0.134       0.144       0.154       0.156       0.159
+ INR1
+    Category 1       0.821       0.825       0.827       0.837       0.847       0.849       0.853
+    Category 2       0.147       0.151       0.153       0.163       0.173       0.175       0.179
+ NDWO1
+    Category 1       0.595       0.602       0.605       0.623       0.641       0.645       0.651
+    Category 2       0.349       0.355       0.359       0.377       0.395       0.398       0.405
+ NDSS1
+    Category 1       0.124       0.141       0.150       0.197       0.245       0.254       0.271
+    Category 2       0.729       0.746       0.755       0.803       0.850       0.859       0.876
+ NDSO1
+    Category 1       1.000       1.000       1.000       1.000       1.000       1.000       1.000
+    Category 2       0.000       0.000       0.000       0.000       0.000       0.000       0.000
+ BO1
+    Category 1       0.938       0.941       0.942       0.948       0.954       0.956       0.958
+    Category 2       0.042       0.044       0.046       0.052       0.058       0.059       0.062
+ SPEE1
+    Category 1       0.957       0.959       0.960       0.965       0.970       0.971       0.973
+    Category 2       0.027       0.029       0.030       0.035       0.040       0.041       0.043
+
+Latent Class 3
+
+ EXT1
+    Category 1       0.542       0.565       0.577       0.639       0.701       0.713       0.736
+    Category 2       0.264       0.287       0.299       0.361       0.423       0.435       0.458
+ MID1
+    Category 1       0.816       0.841       0.853       0.917       0.982       0.994       1.019
+    Category 2      -0.019       0.006       0.018       0.083       0.147       0.159       0.184
+ FTM1
+    Category 1       0.838       0.863       0.876       0.943       1.011       1.023       1.049
+    Category 2      -0.049      -0.023      -0.011       0.057       0.124       0.137       0.162
+ INR1
+    Category 1       0.752       0.774       0.785       0.842       0.900       0.911       0.932
+    Category 2       0.068       0.089       0.100       0.158       0.215       0.226       0.248
+ NDWO1
+    Category 1       0.804       0.827       0.839       0.901       0.962       0.974       0.997
+    Category 2       0.003       0.026       0.038       0.099       0.161       0.173       0.196
+ NDSS1
+    Category 1       1.000       1.000       1.000       1.000       1.000       1.000       1.000
+    Category 2       0.000       0.000       0.000       0.000       0.000       0.000       0.000
+ NDSO1
+    Category 1       0.626       0.677       0.703       0.841       0.978       1.004       1.056
+    Category 2      -0.056      -0.004       0.022       0.159       0.297       0.323       0.374
+ BO1
+    Category 1      -0.231      -0.074       0.006       0.424       0.843       0.923       1.079
+    Category 2      -0.079       0.077       0.157       0.576       0.994       1.074       1.231
+ SPEE1
+    Category 1       0.744       0.776       0.792       0.878       0.963       0.979       1.011
+    Category 2      -0.011       0.021       0.037       0.122       0.208       0.224       0.256
+
+
+CONFIDENCE INTERVALS FOR THE LATENT CLASS ODDS RATIO RESULTS
+
+Latent Class 1 Compared to Latent Class 2
+
+ EXT1
+    Category > 1     0.158       0.182       0.195       0.285       0.416       0.448       0.516
+ MID1
+    Category > 1     2.173       2.283       2.342       2.674       3.052       3.131       3.290
+ FTM1
+    Category > 1     0.699       0.735       0.755       0.866       0.993       1.020       1.074
+ INR1
+    Category > 1     0.812       0.852       0.873       0.991       1.126       1.154       1.210
+ NDWO1
+    Category > 1     1.469       1.527       1.558       1.729       1.918       1.957       2.034
+ NDSS1
+    Category > 1     0.000       0.000       0.000       0.000       0.000       0.000       0.000
+ NDSO1
+    Category > 1 *********  **********  **********  **********  **********  **********  **********
+ BO1
+    Category > 1     0.619       0.690       0.729       0.973       1.299       1.373       1.530
+ SPEE1
+    Category > 1     1.663       1.802       1.877       2.326       2.882       3.002       3.253
+
+Latent Class 1 Compared to Latent Class 3
+
+ EXT1
+    Category > 1     0.041       0.048       0.052       0.081       0.126       0.137       0.162
+ MID1
+    Category > 1     0.748       1.055       1.259       3.161       7.937       9.467      13.363
+ FTM1
+    Category > 1     0.338       0.542       0.689       2.420       8.503      10.816      17.312
+ INR1
+    Category > 1     0.501       0.596       0.650       1.029       1.630       1.779       2.113
+ NDWO1
+    Category > 1     3.474       4.416       4.993       9.479      17.998      20.349      25.869
+ NDSS1
+    Category > 1     1.000       1.000       1.000       1.000       1.000       1.000       1.000
+ NDSO1
+    Category > 1 *********  **********  **********  **********  **********  **********  **********
+ BO1
+    Category > 1     0.003       0.006       0.008       0.039       0.188       0.254       0.456
+ SPEE1
+    Category > 1     0.166       0.226       0.265       0.603       1.374       1.609       2.189
+
+Latent Class 2 Compared to Latent Class 3
+
+ EXT1
+    Category > 1     0.186       0.206       0.217       0.284       0.372       0.391       0.433
+ MID1
+    Category > 1     0.283       0.398       0.474       1.182       2.945       3.508       4.938
+ FTM1
+    Category > 1     0.385       0.618       0.788       2.795       9.918      12.641      20.309
+ INR1
+    Category > 1     0.505       0.600       0.655       1.039       1.647       1.798       2.137
+ NDWO1
+    Category > 1     1.942       2.489       2.826       5.484      10.643      12.084      15.489
+ NDSS1
+    Category > 1 *********  **********  **********  **********  **********  **********  **********
+ NDSO1
+    Category > 1     0.000       0.000       0.000       0.000       0.000       0.000       0.000
+ BO1
+    Category > 1     0.003       0.005       0.007       0.040       0.224       0.311       0.591
+ SPEE1
+    Category > 1     0.071       0.097       0.113       0.259       0.593       0.695       0.948
+
+
+MODEL COMMAND WITH FINAL ESTIMATES USED AS STARTING VALUES
+
+     %OVERALL%
+
+     [ c#1*1.54759 ];
+     [ c#2*2.35204 ];
+
+     %C#1%
+
+     [ ext1$1*3.08407 ];
+     [ mid1$1*1.25779 ];
+     [ ftm1$1*1.92614 ];
+     [ inr1$1*1.64584 ];
+     [ ndwo1$1*-0.04359 ];
+     [ ndss1$1*15 ];
+     [ ndso1$1*-15 ];
+     [ bo1$1*2.93295 ];
+     [ spee1$1*2.47451 ];
+
+     %C#2%
+
+     [ ext1$1*1.82961 ];
+     [ mid1$1*2.24125 ];
+     [ ftm1$1*1.78226 ];
+     [ inr1$1*1.63703 ];
+     [ ndwo1$1*0.50367 ];
+     [ ndss1$1*-1.40275 ];
+     [ ndso1$1*15 ];
+     [ bo1$1*2.90578 ];
+     [ spee1$1*3.31860 ];
+
+     %C#3%
+
+     [ ext1$1*0.56990 ];
+     [ mid1$1*2.40854 ];
+     [ ftm1$1*2.81010 ];
+     [ inr1$1*1.67481 ];
+     [ ndwo1$1*2.20553 ];
+     [ ndss1$1*15 ];
+     [ ndso1$1*1.66389 ];
+     [ bo1$1*-0.30536 ];
+     [ spee1$1*1.96938 ];
+
+
+
+TECHNICAL 11 OUTPUT
+
+     Random Starts Specifications for the k-1 Class Analysis Model
+        Number of initial stage random starts                  20
+        Number of final stage optimizations                     4
+
+
+
+     VUONG-LO-MENDELL-RUBIN LIKELIHOOD RATIO TEST FOR 2 (H0) VERSUS 3 CLASSES
+
+          H0 Loglikelihood Value                       -24205.428
+          2 Times the Loglikelihood Difference            397.086
+          Difference in the Number of Parameters               10
+          Mean                                             46.946
+          Standard Deviation                               52.544
+          P-Value                                          0.0012
+
+     LO-MENDELL-RUBIN ADJUSTED LRT TEST
+
+          Value                                           392.611
+          P-Value                                          0.0013
+
+
+SAVEDATA INFORMATION
+
+
+  Save file
+    wave1_cawi_sensan_final.dat
+
+  Order of variables
+
+    EXT1
+    MID1
+    FTM1
+    INR1
+    NDWO1
+    NDSS1
+    NDSO1
+    BO1
+    SPEE1
+    PID
+    TGANC
+    AGET1
+    AGET3
+    GENF
+    MIGY
+    EDTERT
+    EDNA
+    EMPP
+    EMPNO
+    EMPRET
+    EMPNA
+    KIDY
+    KIDNA
+    INCT1
+    INCT3
+    INCNA
+    PCONS
+    CPROB1
+    CPROB2
+    CPROB3
+    C
+    HID
+
+  Save file format           Free
+
+  Save file record length    10000
+
+
+DIAGRAM INFORMATION
+
+  Mplus diagrams are currently not available for Mixture analysis.
+  No diagram output was produced.
+
+
+     Beginning Time:  11:26:52
+        Ending Time:  11:26:54
+       Elapsed Time:  00:00:02
+
+
+
+MUTHEN & MUTHEN
+3463 Stoner Ave.
+Los Angeles, CA  90066
+
+Tel: (310) 391-9971
+Fax: (310) 391-8971
+Web: www.StatModel.com
+Support: Support@StatModel.com
+
+Copyright (c) 1998-2012 Muthen & Muthen
