@@ -1,0 +1,51 @@
+TITLE:      Wave 2 PAPI LCA for 3 LC - Replicated winner model with sociodemographic predictors (R3STEP)
+
+DATA:       FILE IS ../Data_LCA.dat;
+
+VARIABLE:   NAMES ARE
+            pid hid EXT2 MID2 FTM2 INR2 NDSS2 NDWO2
+            NDSO2 TGANC GENF MIGY AGET1 AGET3 EDTERT EDNA
+            EMPP EMPNO EMPRET EMPNA KIDY KIDNA INCT1 INCT3
+            INCNA;
+
+            IDVARIABLE IS pid;
+
+            USEVARIABLES ARE
+            EXT2 MID2 FTM2 INR2 NDWO2 NDSS2 NDSO2;
+
+            CATEGORICAL ARE
+            EXT2 MID2 FTM2 INR2 NDWO2 NDSS2 NDSO2;
+
+            MISSING IS ALL(-99);
+
+            CLUSTER IS hid;
+
+            CLASSES ARE c(3);
+
+            AUXILIARY ARE
+                    TGANC (R3STEP)
+                         !Ref: Anker
+                    AGET1 (R3STEP) AGET3 (R3STEP)
+                         !Ref: medium (2nd tertile)
+                    GENF (R3STEP)
+                         !Ref: Not female
+                    MIGY (R3STEP)
+                         !Ref: No migration
+                    EDTERT (R3STEP) EDNA (R3STEP)
+                         !Ref: Non-tertiary (ISCED <5)
+                    EMPP (R3STEP) EMPNO (R3STEP) EMPRET (R3STEP) EMPNA (R3STEP)
+                         !Ref: Full-time
+                    KIDY (R3STEP) KIDNA (R3STEP)
+                         !Ref: No child in hh
+                    INCT1 (R3STEP) INCT3 (R3STEP) INCNA(R3STEP);
+                         !Ref: Medium
+
+
+ANALYSIS:   TYPE IS MIXTURE COMPLEX;
+            STARTS ARE 0;
+            OPTSEED IS 279482;
+
+OUTPUT:     SVALUES CINTERVAL TECH11;
+
+
+SAVEDATA: FILE IS wave2_papi_final.dat; FORMAT IS FREE; SAVE = CPROBABILITIES;
