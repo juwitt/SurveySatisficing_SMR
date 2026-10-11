@@ -1,0 +1,1858 @@
+---
+title: "Satisficing 2: Post-LCA | Revision"
+author: "anonymized"
+date: "`r Sys.time()`"
+format:
+  pdf:
+    documentclass: article
+    pdf-engine: xelatex
+    geometry: margin=2cm
+    toc: true
+    toc-depth: 6
+    number-sections: true
+    fig-width: 7
+    fig-height: 5
+    include-in-header:
+      text: |
+        \usepackage{fvextra}
+        \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
+        \usepackage{longtable}
+        \usepackage{booktabs}
+    execute:
+      warning: false
+      message: false
+---
+
+cmLC            | classification (modal) to LC, based on estimated posterior probabilities
+estpostprob     | estimated posterior probabilities
+
+
+```{r}
+#| label: setup
+#| include: false
+#| eval: true
+
+# --- Paths (anonymized for review) ---
+# Point these to your local copies of the survey data before running.
+# The raw data cannot be redistributed; they are available upon request
+# from the Research Data Centre Social Cohesion (RDC-RISC).
+userpath  <- "path/to/repo/"
+datapath  <- "path/to/data/"
+datapath2 <- "path/to/data_aux/"
+cachepath <- "path/to/cache/"
+
+
+hg <- function(df){
+   df |> head() |> glimpse()
+}
+
+ai <- function(df){
+  df |> select(-any_of(c("cid", "pid", "hid", "lfd"))) |> hg()
+}
+
+
+```
+
+
+
+
+```{r}
+#| label: libraries and data load
+#| eval: true
+#| include: false
+
+
+## Clear working memory
+#misty::setsource()
+
+StartScript <- Sys.time()
+
+wd <- getwd()
+setwd(wd)
+
+## Install packages if not installed
+#install.packages('pacman')
+#library(pacman) # package management tool
+
+#if(!require(pacman)){
+#  install.packages("pacman", dependencies = TRUE)
+#}
+
+# If necessary: install satisficingr from the local repository
+#remotes::install_local("satisficingr")
+
+library(pacman)
+p_load("kableExtra",
+       "knitr",           # to echo/eval/include code from code chunks
+       "haven",           # read in stata files
+       
+       "labelled",        # manipulate metadata as variable labels
+       "sjmisc",          # set_na
+       "survey",          # glm
+       "modelsummary",    # modelsummary and -plots
+       "sandwich",        #vcovCL
+       "DescTools",        #PseudoR2 for polr-Obj
+        "GGally",          # intercors
+       "ggpubr",          # correlation coefficients within ggplots
+       "PerformanceAnalytics", # intercors
+       "gridExtra",    # Nondiff grid
+       "correlationfunnel",   # to binarize categorical items
+       "lavaan",
+        "tidySEM",
+       "jtools",
+       "tidyverse"       # data manipulation
+ )
+
+
+```
+
+
+## Get data
+
+```{r}
+col_names_wave1_cawi <- c(
+
+    "EXT1",
+    "MID1",
+    "FTM1",
+    "INR1",
+    "NDWO1",
+    "NDSS1",
+    "NDSO1",
+    "BO1",
+    "SPEE1",
+    "PID",
+    "TGANC",
+    "AGET1",
+    "AGET3",
+    "GENF",
+    "MIGY",
+    "EDTERT",
+    "EDNA",
+    "EMPP",
+    "EMPNO",
+    "EMPRET",
+    "EMPNA",
+    "KIDY",
+    "KIDNA",
+    "INCT1",
+    "INCT3",
+    "INCNA",
+    "CPROB1",
+    "CPROB2",
+    "CPROB3",
+    "C",
+    "HID"
+
+
+  
+)
+file_path_wave1_cawi <- "wave1_cawi/lca_1-6_classes/wave1_cawi_final.dat"
+wave1_cawi <- read.table(file_path_wave1_cawi, header = FALSE, col.names = col_names_wave1_cawi)
+
+wave1_cawi <- 
+  wave1_cawi |> 
+  rename(pid = PID,
+         hid = HID,
+         cprob_opt_wave1 = CPROB2,
+         cprob_indiff_wave1 = CPROB1,
+         cprob_exm_wave1 = CPROB3) |> 
+  mutate(
+    LC_wave1 = case_when(
+      C == 2 ~ "Softsat",
+      C == 1 ~ "Indifferent",
+      C == 3 ~ "Extremist"
+    ), 
+    LC_wave1 = factor(LC_wave1, levels = c("Softsat", "Indifferent", "Extremist")),
+    Mode_wave1 = "Web"
+  )
+  
+
+
+
+
+col_names_w2_cawi <- c(
+    "EXT2",
+    "MID2",
+    "FTM2",
+    "INR2",
+    "NDWO2",
+    "NDSS2",
+    "NDSO2",
+    "BO2",
+    "SPEE2",
+    "PID",
+    "TGANC",
+    "AGET1",
+    "AGET3",
+    "GENF",
+    "MIGY",
+    "EDTERT",
+    "EDNA",
+    "EMPP",
+    "EMPNO",
+    "EMPRET",
+    "EMPNA",
+    "KIDY",
+    "KIDNA",
+    "INCT1",
+    "INCT3",
+    "INCNA",
+    "CPROB1",
+    "CPROB2",
+    "CPROB3",
+    "C",
+    "HID"
+)
+file_path_w2_cawi <- "wave2_cawi/lca_1-6_classes/wave2_cawi_final.dat"
+w2_cawi <- read.table(file_path_w2_cawi, header = FALSE, col.names = col_names_w2_cawi)
+
+w2_cawi <- 
+  w2_cawi |> 
+  rename(pid = PID,
+         hid = HID,
+         cprob_opt_w2 = CPROB1,
+         cprob_indiff_w2 = CPROB3,
+         cprob_exm_w2 = CPROB2) |> 
+  mutate(
+    LC_w2 = case_when(
+      C == 1 ~ "Softsat",
+      C == 3 ~ "Indifferent",
+      C == 2 ~ "Extremist"
+    ), 
+    LC_w2 = factor(LC_w2, levels = c("Softsat", "Indifferent", "Extremist")),
+    Mode_w2 = "Web"
+  )
+  
+
+
+
+
+col_names_wave3_cawi <- c(
+    "EXT3",
+    "MID3",
+    "FTM3",
+    "INR3",
+    "NDWO3",
+    "NDSS3",
+    "NDSO3",
+    "BO3",
+    "SPEE3",
+    "PID",
+    "TGANC",
+    "AGET1",
+    "AGET3",
+    "GENF",
+    "MIGY",
+    "EDTERT",
+    "EDNA",
+    "EMPP",
+    "EMPNO",
+    "EMPRET",
+    "EMPNA",
+    "KIDY",
+    "KIDNA",
+    "INCT1",
+    "INCT3",
+    "INCNA",
+    "CPROB1",
+    "CPROB2",
+    "CPROB3",
+    "C",
+    "HID"
+)
+file_path_wave3_cawi <- "wave3_cawi/lca_1-6_classes/wave3_cawi_final.dat"
+wave3_cawi <- read.table(file_path_wave3_cawi, header = FALSE, col.names = col_names_wave3_cawi)
+
+wave3_cawi <- 
+  wave3_cawi |> 
+  rename(pid = PID,
+         hid = HID,
+         cprob_exm_wave3 = CPROB1,
+         cprob_indiff_wave3 = CPROB2,
+         cprob_opt_wave3 = CPROB3) |> 
+  mutate(
+    LC_wave3 = case_when(
+      C == 1 ~ "Extremist",
+      C == 2 ~ "Indifferent",
+      C == 3 ~ "Softsat"
+    ), 
+    LC_wave3 = factor(LC_wave3, levels = c("Softsat", "Indifferent", "Extremist")),
+    Mode_wave3 = "Web"
+  )
+
+
+
+
+col_names_wave1_papi <- c(
+  "EXT1",
+    "MID1",
+    "FTM1",
+    "INR1",
+    "NDWO1",
+    "NDSS1",
+    "NDSO1",
+    "PID",
+    "TGANC",
+    "AGET1",
+    "AGET3",
+    "GENF",
+    "MIGY",
+    "EDTERT",
+    "EDNA",
+    "EMPP",
+    "EMPNO",
+    "EMPRET",
+    "EMPNA",
+    "KIDY",
+    "KIDNA",
+    "INCT1",
+    "INCT3",
+    "INCNA",
+    "CPROB1",
+    "CPROB2",
+    "CPROB3",
+    "C",
+    "HID"
+)
+file_path_wave1_papi <- "wave1_papi/lca_1-6_classes/wave1_papi_final.dat"
+wave1_papi <- read.table(file_path_wave1_papi, header = FALSE, col.names = col_names_wave1_papi)
+
+wave1_papi <- 
+  wave1_papi |> 
+  rename(pid = PID,
+         hid = HID,
+         cprob_indiff_wave1 = CPROB1,
+         cprob_opt_wave1 = CPROB3,
+         cprob_exm_wave1 = CPROB2) |> 
+  mutate(
+    LC_wave1 = case_when(
+      C == 2 ~ "Extremist",
+      C == 1 ~ "Indifferent",
+      C == 3 ~ "Softsat"
+    ), 
+    LC_wave1 = factor(LC_wave1, c("Softsat", "Indifferent", "Extremist")),
+    Mode_wave1 = "Paper"
+  )
+
+
+col_names_w2_papi <- c(
+  "EXT2",
+    "MID2",
+    "FTM2",
+    "INR2",
+    "NDWO2",
+    "NDSS2",
+    "NDSO2",
+    "PID",
+    "TGANC",
+    "AGET1",
+    "AGET3",
+    "GENF",
+    "MIGY",
+    "EDTERT",
+    "EDNA",
+    "EMPP",
+    "EMPNO",
+    "EMPRET",
+    "EMPNA",
+    "KIDY",
+    "KIDNA",
+    "INCT1",
+    "INCT3",
+    "INCNA",
+    "CPROB1",
+    "CPROB2",
+    "CPROB3",
+    "C",
+    "HID"
+)
+file_path_w2_papi <- "wave2_papi/lca_1-6_classes/wave2_papi_final.dat"
+w2_papi <- read.table(file_path_w2_papi, header = FALSE, col.names = col_names_w2_papi)
+
+w2_papi <- 
+  w2_papi |> 
+  rename(pid = PID,
+         hid = HID,
+         cprob_indiff_w2 = CPROB1,
+         cprob_opt_w2 = CPROB3,
+         cprob_exm_w2 = CPROB2) |> 
+  mutate(
+    LC_w2 = case_when(
+      C == 2 ~ "Extremist",
+      C == 1 ~ "Indifferent",
+      C == 3 ~ "Softsat"
+    ), 
+    LC_w2 = factor(LC_w2, c("Softsat", "Indifferent", "Extremist")),
+    Mode_w2 = "Paper"
+  )
+
+
+col_names_wave3_papi <- c(
+    "EXT3",
+    "MID3",
+    "FTM3",
+    "INR3",
+    "NDWO3",
+    "NDSS3",
+    "NDSO3",
+    "PID",
+    "TGANC",
+    "AGET1",
+    "AGET3",
+    "GENF",
+    "MIGY",
+    "EDTERT",
+    "EDNA",
+    "EMPP",
+    "EMPNO",
+    "EMPRET",
+    "EMPNA",
+    "KIDY",
+    "KIDNA",
+    "INCT1",
+    "INCT3",
+    "INCNA",
+    "CPROB1",
+    "CPROB2",
+    "CPROB3",
+    "C",
+    "HID"
+)
+file_path_wave3_papi <- "wave3_papi/lca_1-6_classes/wave3_papi_final.dat"
+wave3_papi <- read.table(file_path_wave3_papi, header = FALSE, col.names = col_names_wave3_papi)
+
+wave3_papi <- 
+  wave3_papi |> 
+  rename(pid = PID,
+         hid = HID,
+         cprob_indiff_wave3 = CPROB1,
+         cprob_opt_wave3 = CPROB3,
+         cprob_exm_wave3 = CPROB2) |> 
+  mutate(
+    LC_wave3 = case_when(
+      C == 2 ~ "Extremist",
+      C == 1 ~ "Indifferent",
+      C == 3 ~ "Softsat"
+    ), 
+    LC_wave1 = factor(LC_wave3, c("Softsat", "Indifferent", "Extremist")),
+    Mode_wave3 = "Paper"
+  )
+
+wave1_cawi |> ai()
+wave1_papi |> ai()
+
+socdem <- c(
+  "TGANC", "AGET1", "AGET3", "GENF", "MIGY", "EDTERT", "EDNA", "EMPP", "EMPNO", "EDNA", "EMPRET", "EMPNA", "KIDY", "KIDNA", "INCT1", "INCT3", "INCT3","INCNA"
+)
+
+wave1 <- rbind(wave1_cawi |> select(pid, hid, Mode_wave1, LC_wave1, starts_with("cprob_"), all_of(socdem)), 
+              wave1_papi |> select(pid, hid, Mode_wave1, LC_wave1, starts_with("cprob_"), all_of(socdem)))
+w2 <- rbind(w2_cawi |> select(pid, hid, Mode_w2, LC_w2, starts_with("cprob_")),
+              w2_papi |> select(pid, hid, Mode_w2, LC_w2, starts_with("cprob_")))
+wave3 <- rbind(wave3_cawi |> select(pid, hid, Mode_wave3, LC_wave3, starts_with("cprob_")),  
+              wave3_papi |> select(pid, hid, Mode_wave3, LC_wave3, starts_with("cprob_")))
+
+df <- 
+  wave1 |> 
+  left_join(w2, by = c("pid", "hid")) |> 
+  left_join(wave3, by = c("pid", "hid")) |> 
+  mutate(
+    Age_cat = case_when(
+      AGET1 == 2 ~ "Age_T1[18.0-40.0]",
+      AGET3 == 2 ~ "Age_T3[60.0-97.0]",
+      TRUE       ~ "Age_T2[40.0-60.0]"
+    ) |> factor(levels = c("Age_T1[18.0-40.0]", "Age_T2[40.0-60.0]", "Age_T3[60.0-97.0]")),
+
+    Mig = case_when(
+      MIGY == 2 ~ "Yes",
+      TRUE      ~ "No"
+    ) |> factor(levels = c("No", "Yes")),
+
+    Gender = case_when(
+      GENF == 2 ~ "Female",
+      TRUE      ~ "Not female"
+    ) |> factor(levels = c("Not female", "Female")),
+
+    Education = case_when(
+      EDTERT == 2 ~ "Tertiary (ISCED 5-8)",
+      EDNA   == 2 ~ "missing",
+      TRUE        ~ "Non-tertiary (ISCED 0-4)"
+    ) |> factor(levels = c("Non-tertiary (ISCED 0-4)", "Tertiary (ISCED 5-8)", "missing")),
+
+    Employment = case_when(
+      EMPP   == 2 ~ "Part-time or flexible",
+      EMPNO  == 2 ~ "Not currently employed, training",
+      EMPRET == 2 ~ "Retirement",
+      EMPNA  == 2 ~ "missing",
+      TRUE        ~ "Full-time"
+    ) |> factor(levels = c("Full-time", "Part-time or flexible",
+                            "Not currently employed, training", "Retirement", "missing")),
+
+    ChildHH = case_when(
+      KIDY  == 2 ~ "Child in hh",
+      KIDNA == 2 ~ "missing",
+      TRUE       ~ "No child"
+    ) |> factor(levels = c("No child", "Child in hh", "missing")),
+
+    EquivIncome = case_when(
+      INCT1 == 2 ~ "EquivIncome_T1min",
+      INCT3 == 2 ~ "EquivIncome_T3max",
+      INCNA == 2 ~ "missing",
+      TRUE       ~ "EquivIncome_T2med"
+    ) |> factor(levels = c("EquivIncome_T1min", "EquivIncome_T2med",
+                             "EquivIncome_T3max", "missing")),
+
+    TargetGroup = case_when(
+      TGANC == 2 ~ "Anchor",
+      TRUE       ~ "HH member"
+    ) |> factor(levels = c("HH member", "Anchor"))
+  )
+
+df |> ai()
+df |> filter(LC_wave1 == "Extremist") |> group_by(Mode_wave1) |> frq(EquivIncome)
+df |> filter(LC_w2 == "Extremist") |> group_by(Mode_w2) |> frq(EquivIncome)
+df |> filter(LC_wave3 == "Extremist") |> group_by(Mode_wave3) |> frq(EquivIncome)
+
+
+
+```
+
+# Load SensAn
+
+```{r}
+
+col_names_wave1_papisensan <- c(
+  "EXT1",
+    "MID1",
+    "FTM1",
+    "INR1",
+    "NDWO1",
+    "NDSS1",
+    "NDSO1",
+    "PID",
+    "TGANC",
+    "AGET1",
+    "AGET3",
+    "GENF",
+    "MIGY",
+    "EDTERT",
+    "EDNA",
+    "EMPP",
+    "EMPNO",
+    "EMPRET",
+    "EMPNA",
+    "KIDY",
+    "KIDNA",
+    "INCT1",
+    "INCT3",
+    "INCNA",
+    "PCONS",
+    "CPROB1",
+    "CPROB2",
+    "CPROB3",
+    "C",
+    "HID"
+)
+file_path_wave1_papisensan <- "wave1_papi_sensan/lca_1-10_classes/wave1_papi_sensan_final.dat"
+wave1_papi_sensan <- read.table(file_path_wave1_papisensan, header = FALSE, col.names = col_names_wave1_papisensan)
+
+wave1_papi_sensan <- 
+  wave1_papi_sensan |> 
+  rename(pid = PID,
+         hid = HID,
+         cprob_indiff = CPROB1,
+         cprob_opt = CPROB3,
+         cprob_3 = CPROB2) |> 
+  mutate(
+    LC = case_when(
+      C == 2 ~ "Extremist",
+      C == 1 ~ "Indifferent",
+      C == 3 ~ "Softsat"
+    ), 
+    LC = factor(LC, c("Softsat", "Indifferent", "Extremist")),
+    Mode = "Paper"
+  )
+
+
+
+
+col_names_wave1_cawisensan <- c(
+
+    "EXT1",
+    "MID1",
+    "FTM1",
+    "INR1",
+    "NDWO1",
+    "NDSS1",
+    "NDSO1",
+    "BO1",
+    "SPEE1",
+    "PID",
+    "TGANC",
+    "AGET1",
+    "AGET3",
+    "GENF",
+    "MIGY",
+    "EDTERT",
+    "EDNA",
+    "EMPP",
+    "EMPNO",
+    "EMPRET",
+    "EMPNA",
+    "KIDY",
+    "KIDNA",
+    "INCT1",
+    "INCT3",
+    "INCNA",
+    "PCONS",
+    "CPROB1",
+    "CPROB2",
+    "CPROB3",
+    "C",
+    "HID"
+)
+
+
+file_path_wave1_cawisensan <- "wave1_cawi_sensan/lca_1-10_classes/wave1_cawi_sensan_final.dat"
+wave1_cawi_sensan <- read.table(file_path_wave1_cawisensan, header = FALSE, col.names = col_names_wave1_cawisensan)
+
+wave1_cawi_sensan <- 
+  wave1_cawi_sensan |> 
+  rename(pid = PID,
+         hid = HID,
+         cprob_opt = CPROB2,
+         cprob_indiff = CPROB1,
+         cprob_3 = CPROB3) |> 
+  mutate(
+    LC = case_when(
+      C == 2 ~ "Softsat",
+      C == 1 ~ "Indifferent",
+      C == 3 ~ "Complex"
+    ), 
+    LC = factor(LC, levels = c("Softsat", "Indifferent", "Complex")),
+    Mode = "Web"
+  )
+
+
+socdem_sensan <- c(
+  "TGANC", "AGET1", "AGET3", "GENF", "MIGY", "EDTERT", "EDNA", "EMPP", "EMPNO", "EDNA", "EMPRET", "EMPNA", "KIDY", "KIDNA", "INCT1", "INCT3", "INCT3","INCNA", "PCONS"
+)
+
+w1_sensan <- rbind(wave1_cawi_sensan |> select(pid, hid, Mode, LC, starts_with("cprob_"), all_of(socdem_sensan)), 
+              wave1_papi_sensan |> select(pid, hid, Mode, LC, starts_with("cprob_"), all_of(socdem_sensan)))
+
+w1_sensan |> ai()
+
+
+```
+
+
+# Distributions of Posterior Probs
+
+- predicting the current cprob does not work, because the probabilities for Indiff and partly also Opti are factisch annähernd dichotom sind
+
+- Wave 1:
+
+```{r}
+# distribution of cprob_indiff in wave1
+df |> 
+  select(cprob_indiff_wave1, Mode_wave1) |>
+  ggplot(aes(x = cprob_indiff_wave1)) +
+  geom_histogram(bins = 20) +
+  facet_wrap(~ Mode_wave1)
+
+# for comparison: cprob_opt
+df |>
+  select(cprob_opt_wave1, Mode_wave1) |>
+  ggplot(aes(x = cprob_opt_wave1)) +
+  geom_histogram(bins = 20) +
+  facet_wrap(~ Mode_wave1)
+
+# for comparison: cprob_exm
+df |>
+  select(cprob_exm_wave1, Mode_wave1) |>
+  ggplot(aes(x = cprob_exm_wave1)) +
+  geom_histogram(bins = 20) +
+  facet_wrap(~ Mode_wave1)
+```
+
+- W2:
+
+```{r}
+# distribution of cprob_indiff in w2
+df |> 
+  filter(!is.na(Mode_w2)) |> 
+  select(cprob_indiff_w2, Mode_w2) |>
+  ggplot(aes(x = cprob_indiff_w2)) +
+  geom_histogram(bins = 20) +
+  facet_wrap(~ Mode_w2)
+
+# for comparison: cprob_opt
+df |> 
+  filter(!is.na(Mode_w2)) |> 
+  select(cprob_opt_w2, Mode_w2) |>
+  ggplot(aes(x = cprob_opt_w2)) +
+  geom_histogram(bins = 20) +
+  facet_wrap(~ Mode_w2)
+
+# for comparison: cprob_exm
+df |> 
+  filter(!is.na(Mode_w2)) |> 
+  select(cprob_exm_w2, Mode_w2) |>
+  ggplot(aes(x = cprob_exm_w2)) +
+  geom_histogram(bins = 20) +
+  facet_wrap(~ Mode_w2)
+```
+
+
+- Wave 3:
+
+```{r}
+# distribution of cprob_indiff in wave3
+df |>  
+  filter(!is.na(Mode_wave3)) |> 
+  select(cprob_indiff_wave3, Mode_wave3) |>
+  ggplot(aes(x = cprob_indiff_wave3)) +
+  geom_histogram(bins = 20) +
+  facet_wrap(~ Mode_wave3)
+
+# for comparison: cprob_opt
+df |>  
+  filter(!is.na(Mode_wave3)) |> 
+  select(cprob_opt_wave3, Mode_wave3) |>
+  ggplot(aes(x = cprob_opt_wave3)) +
+  geom_histogram(bins = 20) +
+  facet_wrap(~ Mode_wave3)
+
+# for comparison: cprob_exm
+df |>  
+  filter(!is.na(Mode_wave3)) |> 
+  select(cprob_exm_wave3, Mode_wave3) |>
+  ggplot(aes(x = cprob_exm_wave3)) +
+  geom_histogram(bins = 20) +
+  facet_wrap(~ Mode_wave3)
+```
+
+
+
+### Prediction: Which Model to Choose
+
+```{r}
+
+# Given a model, predict values of yvar from xvar
+# This function supports one predictor and one predicted variable
+# xrange: If NULL, determine the x range from the model object. If a vector with
+#   two numbers, use those as the min and max of the prediction range.
+# samples: Number of samples across the x range.
+# ...: Further arguments to be passed to predict()
+predictvals <- function(model, xvar, yvar, xrange = NULL, samples = 100, ...) {
+
+  # If xrange isn't passed in, determine xrange from the models.
+  # Different ways of extracting the x range, depending on model type
+  if (is.null(xrange)) {
+    if (any(class(model) %in% c("lm", "glm")))
+      xrange <- range(model$model[[xvar]])
+    else if (any(class(model) %in% "loess"))
+      xrange <- range(model$x)
+  }
+
+  newdata <- data.frame(x = seq(xrange[1], xrange[2], length.out = samples))
+  names(newdata) <- xvar
+  newdata[[yvar]] <- predict(model, newdata = newdata, ...)
+  newdata
+}
+
+geom_lm <- function(formula = y ~ x, colour = alpha("steelblue", 0.5), 
+                    linewidth = 2, ...)  {
+  geom_smooth(formula = formula, se = FALSE, method = "lm", colour = colour,
+    linewidth = linewidth, ...)
+}
+
+mod_loes <- loess(cprob_opt_w2 ~ cprob_opt_wave1, df)
+loess_predicted <- predictvals(mod_loes, "cprob_opt_wave1", "cprob_opt_w2")
+
+#zshg_opti <- 
+  ggplot(df, aes(cprob_opt_w2, cprob_opt_wave1)) +
+  geom_point() +
+  geom_lm() +
+  geom_lm(y ~ poly(x, 2), linewidth = 1, colour = "red") + 
+  geom_lm(y ~ poly(x, 10), linewidth = 1, colour = "green") +
+  geom_line(data = loess_predicted, color = "pink", linewidth = .8)
+
+# ggsave(file = "path/to/plots/zshg_opti.png", zshg_opti, 
+#        width = 6,
+#        height = 4,
+#        dpi = 300)
+```
+
+# Predicting Satisficing
+
+```{r}
+p_load(modelsummary, rcompanion)
+
+
+# ── 1. Dummy coding and factor levels ──────────────────────────────────────────────────────
+df <- df |>
+  mutate(
+    y_opt_w2    = as.integer(LC_w2 == "Softsat"),
+    y_exm_w2    = as.integer(LC_w2 == "Extremist"),
+    y_indiff_w2 = as.integer(LC_w2 == "Indifferent"),
+    y_opt_wave3      = as.integer(LC_wave3   == "Softsat"),
+    y_exm_wave3      = as.integer(LC_wave3   == "Extremist"),
+    y_indiff_wave3   = as.integer(LC_wave3   == "Indifferent"),
+    Mode_wave1     = factor(Mode_wave1, levels = c("Paper", "Web")),
+    Mode_w2     = factor(Mode_w2, levels = c("Paper", "Web")),
+    Mode_wave3       = factor(Mode_wave3,   levels = c("Paper", "Web"))
+  )
+
+# ── 2. Consistent analysis subsets ─────────────────────────────────────────────────────
+df_wave1_w2 <- df |> filter(!is.na(cprob_opt_wave1) & !is.na(LC_w2))
+df_w2_wave3   <- df |> filter(!is.na(cprob_opt_w2) & !is.na(LC_wave3))
+df_wave1_wave3   <- df |> filter(!is.na(cprob_opt_wave1) & !is.na(LC_wave3))
+
+# ── 3. Model estimation ─────────────────────────────────────────────────────────────────
+
+
+# Softsat
+#wave 2 by wave 1
+w2_opt <- glm(y_opt_w2 ~ cprob_opt_wave1    * Mode_wave1, data = df_wave1_w2, family = binomial)
+#wave 3 by wave 2
+wave3_opt_2 <- glm(y_opt_wave3   ~ cprob_opt_w2    * Mode_w2, data = df_w2_wave3,   family = binomial)
+#wave 3 by wave 1
+wave3_opt_1 <- glm(y_opt_wave3   ~ cprob_opt_wave1    * Mode_wave1, data = df_wave1_wave3,   family = binomial)
+
+# Extremist
+w2_exm <- glm(y_exm_w2 ~ cprob_exm_wave1   * Mode_wave1, data = df_wave1_w2, family = binomial)
+wave3_exm_2 <- glm(y_exm_wave3   ~ cprob_exm_w2   * Mode_w2, data = df_w2_wave3,   family = binomial)
+wave3_exm_1 <- glm(y_exm_wave3   ~ cprob_exm_wave1   * Mode_wave1, data = df_wave1_wave3,   family = binomial)
+
+# Indifferent
+w2_ind <- glm(y_indiff_w2 ~ cprob_indiff_wave1 * Mode_wave1, data = df_wave1_w2, family = binomial)
+wave3_ind_2 <- glm(y_indiff_wave3   ~ cprob_indiff_w2 * Mode_w2, data = df_w2_wave3,   family = binomial)
+wave3_ind_1 <- glm(y_indiff_wave3   ~ cprob_indiff_wave1 * Mode_wave1, data = df_wave1_wave3,   family = binomial)
+
+# ── 4. Regression tables ────────────────────────────────────────────────────────────────
+fmt <- function(x) format(round(x, 3), big.mark = ",")
+gm  <- list(list("raw" = "nobs", "clean" = "N", "fmt" = fmt))
+
+modelsummary(
+  list("W2 by Wave 1" = w2_opt, "Wave 3 by W2" = wave3_opt_2, "Wave 3 by Wave 1" = wave3_opt_1),
+  title        = "Softsat",
+  exponentiate = TRUE, vcov = "HC1", cluster = ~ hid,
+  stars        = c("*" = .05, "**" = .01, "***" = .001),
+  statistic    = "conf.int", gof_map = gm, output = "flextable"
+)
+
+
+
+modelsummary(
+  list("W2 by Wave 1" = w2_exm, "Wave 3 by W2" = wave3_exm_2, "Wave 3 by Wave 1" = wave3_exm_1),
+  title        = "Extremist",
+  exponentiate = TRUE, vcov = "HC1", cluster = ~ hid,
+  stars        = c("*" = .05, "**" = .01, "***" = .001),
+  statistic    = "conf.int", gof_map = gm, output = "flextable"
+)
+
+
+
+modelsummary(
+  list("W2 by Wave 1" = w2_ind, "Wave 3 by W2" = wave3_ind_2, "Wave 3 by Wave 1" = wave3_ind_1),
+  title        = "Indifferent",
+  exponentiate = TRUE, vcov = "HC1", cluster = ~ hid,
+  stars        = c("*" = .05, "**" = .01, "***" = .001),
+  statistic    = "conf.int", gof_map = gm, output = "flextable"
+)
+
+models_named <- list(
+  "Opt:  W2 by Wave 1" = w2_opt, "Opt:  Wave 3 by W2" = wave3_opt_2, "Opt:  Wave 3 by Wave 1" = wave3_opt_1,
+  "ExM:  W2 by Wave 1" = w2_exm, "ExM:  Wave 3 by W2" = wave3_exm_2, "ExM:  Wave 3 by Wave 1" = wave3_exm_1,
+  "Ind:  W2 by Wave 1" = w2_ind, "Ind:  Wave 3 by W2" = wave3_ind_2, "Ind:  Wave 3 by Wave 1" = wave3_ind_1
+)
+
+imap(models_named, ~ {
+  cat("\n──", .y, "──\n")
+  print(rcompanion::nagelkerke(.x)$Pseudo.R.squared.for.model.vs.null)
+})
+
+
+# ── Opt:  W2 by Wave 1 ──
+```
+
+
+```{r}
+#| label: table-logreg-latex
+# Purpose: build the LaTeX table of the logistic regressions directly from
+# the fitted models; the table layout is described once and all numbers are
+# taken from the model objects at render time.
+
+# ── Helper functions ─────────────────────────────────────────────────────────
+nagR2 <- function(model) {
+  round(rcompanion::nagelkerke(model)$Pseudo.R.squared.for.model.vs.null[
+    "Nagelkerke (Cragg and Uhler)", "Pseudo.R.squared"], 2)
+}
+
+mf <- function(model) {
+  round(rcompanion::nagelkerke(model)$Pseudo.R.squared.for.model.vs.null[
+    "McFadden", "Pseudo.R.squared"], 2)
+}
+
+get_stars <- function(model, term_idx) {
+  se <- sqrt(diag(sandwich::vcovCL(model, cluster = ~ hid)))[term_idx]
+  z  <- abs(coef(model)[term_idx] / se)
+  p  <- 2 * pnorm(z, lower.tail = FALSE)
+  case_when(p < .001 ~ "***", p < .01 ~ "**", p < .05 ~ "*", TRUE ~ "")
+}
+
+extract <- function(model) {
+  map(seq_along(coef(model)), ~ list(
+    or    = round(exp(coef(model)[.x]), 3),
+    ci_lo = round(exp(confint.default(model)[.x, 1]), 3),
+    ci_hi = round(exp(confint.default(model)[.x, 2]), 3),
+    stars = get_stars(model, .x)
+  ))
+}
+
+num <- function(x) paste0("\\num{", x, "}")
+
+# ── Which models form the columns / blocks, and how they are labelled ─────────
+tab_spec <- list(
+  caption = paste("Logistic Regression Results of Most Probable Satisficing",
+                  "Pattern by Previous Likelihood of Same Satisficing"),
+  label   = "tab:PredictionRegression",
+  colheads = c("Logistic Parameter$^a$",
+               "Wave 2 by 1.1", "Wave 2 by 2", "Wave 3 by 1.1"),
+  firstcol = "OR [95\\% CI]",
+  blocks = list(
+    list(pattern = "Softsat",
+         models  = list(w2_opt, wave3_opt_2, wave3_opt_1),
+         terms   = c("(Intercept)",
+                     "$\\hat{p}_{Softsat}$",
+                     "Web Mode (Ref: Paper)",
+                     "$\\hat{p}_{Softsat} \\times$ Web Mode")),
+    list(pattern = "Extremist",
+         models  = list(w2_exm, wave3_exm_2, wave3_exm_1),
+         terms   = c("(Intercept)",
+                     "$\\hat{p}_{Extremist}$",
+                     "Web Mode (Ref: Paper)",
+                     "$\\hat{p}_{Extremist} \\times$ Web Mode")),
+    list(pattern = "Indifferents",
+         models  = list(w2_ind, wave3_ind_2, wave3_ind_1),
+         terms   = c("(Intercept)",
+                     "$\\hat{p}_{Indifferents}$",
+                     "Web Mode (Ref: Paper)",
+                     "$\\hat{p}_{Indifferents} \\times$ Web Mode"))
+  ),
+  note = paste("OR = Odds Ratio. CI = confidence interval",
+               "[lower level, upper level]. $\\hat{p}$ = model estimated posterior",
+               "class probability of previous wave. $\\hat{c}_{modal}$ = most likely class",
+               "membership. Robust standard errors with individuals clustered in",
+               "households (HC1).")
+)
+
+# ── Row builders ─────────────────────────────────────────────────────────────
+or_row <- function(ex, i) {
+  paste0(" & ", paste(map_chr(ex, ~ paste0(num(.x[[i]]$or), .x[[i]]$stars)), collapse = " & "), " \\\\")
+}
+
+ci_row <- function(ex, i) {
+  paste0(" & ", paste(map_chr(ex, ~ paste0("{}[", num(.x[[i]]$ci_lo), ", ",
+                                           num(.x[[i]]$ci_hi), "]")), collapse = " & "), " \\\\")
+}
+
+fit_row <- function(models, fun) {
+  paste0(" & ", paste(map_chr(models, ~ num(fun(.x))), collapse = " & "), " \\\\")
+}
+
+block_rows <- function(block) {
+  ex <- map(block$models, extract)
+  out <- c(paste0(" & \\multicolumn{3}{c}{$\\hat{c}_{modal} =$ ", block$pattern, "} \\\\"))
+  for (i in seq_along(block$terms)) {
+    out <- c(out,
+             paste0(block$terms[i], or_row(ex, i)),
+             ci_row(ex, i))
+  }
+  out <- c(out,
+           paste0("N", fit_row(block$models, function(m) nrow(m$model))),
+           paste0("McFadden $R^2$", fit_row(block$models, mf)),
+           paste0("Nagelkerke $R^2$", fit_row(block$models, nagR2)))
+  out
+}
+
+# ── Assemble the LaTeX table ─────────────────────────────────────────────────
+latex <- c(
+  "\\begin{table}",
+  "  \\begin{threeparttable}",
+  paste0("  \\caption{", tab_spec$caption, "}"),
+  paste0("  \\label{", tab_spec$label, "}"),
+  "  \\begin{tabular}[t]{@{}lccc@{}}",
+  "  \\toprule",
+  paste0("  ", paste(tab_spec$colheads, collapse = " & "), " \\\\ \\cline{2-4}"),
+  paste0("  & ", paste(rep(tab_spec$firstcol, 3), collapse = " & "), " \\\\ \\midrule"),
+  unlist(map(tab_spec$blocks, block_rows)),
+  "  \\end{tabular}",
+  "  \\begin{tablenotes}[flushleft]",
+  paste0("    \\item \\footnotesize \\textit{Note.} ", tab_spec$note),
+  "    \\textsuperscript{a} Parameters refer to the characteristics of previous waves.",
+  "    \\textsuperscript{*}p$<0.05$, \\textsuperscript{**}p$<0.01$, \\textsuperscript{***}p$<0.001$.",
+  "  \\end{tablenotes}",
+  "  \\end{threeparttable}",
+  "\\end{table}"
+)
+
+# write out for the manuscript, and show it in the rendered document
+#writeLines(latex, "table1_satisficing.tex")
+cat(latex, sep = "\n")
+```
+
+
+# Correlations Plots
+
+
+
+```{r}
+#| label: correlation-plots 
+
+# ── Long-Format aus df ────────────────────────────────────────────────────────
+wave1_long <- df |>
+  select(pid, hid, Mode = Mode_wave1,
+         pSoftsat    = cprob_opt_wave1,
+         pExtremist    = cprob_exm_wave1,
+         pIndifferent = cprob_indiff_wave1) |>
+  pivot_longer(cols = c(pSoftsat, pExtremist, pIndifferent),
+               names_to = "variable", values_to = "epp") |>
+  mutate(Wave = "Wave 1")
+
+w2_long <- df |>
+  filter(!is.na(cprob_opt_w2)) |>
+  select(pid, hid, Mode = Mode_w2,
+         pSoftsat    = cprob_opt_w2,
+         pExtremist    = cprob_exm_w2,
+         pIndifferent = cprob_indiff_w2) |>
+  pivot_longer(cols = c(pSoftsat, pExtremist, pIndifferent),
+               names_to = "variable", values_to = "epp") |>
+  mutate(Wave = "Wave 2")
+
+wave3_long <- df |>
+  filter(!is.na(cprob_opt_wave3)) |>
+  select(pid, hid, Mode = Mode_wave3,
+         pSoftsat    = cprob_opt_wave3,
+         pExtremist    = cprob_exm_wave3,
+         pIndifferent = cprob_indiff_wave3) |>
+  pivot_longer(cols = c(pSoftsat, pExtremist, pIndifferent),
+               names_to = "variable", values_to = "epp") |>
+  mutate(Wave = "Wave 3")
+# ── Plot function ─────────────────────────────────────────────────────────────
+make_cor_plot <- function(long_a, long_b, wave_a_label, wave_b_label, filename) {
+  
+  plot_df <- long_a |>
+    select(pid, PatternA = variable, eppA = epp, ModeA = Mode) |>
+    left_join(
+      long_b |> select(pid, PatternB = variable, eppB = epp, ModeB = Mode),
+      by = "pid",
+      relationship = "many-to-many"
+    ) |>
+    filter(PatternA %in% c("pSoftsat", "pExtremist", "pIndifferent"),
+           PatternB %in% c("pSoftsat", "pExtremist", "pIndifferent")) |>
+    mutate(
+      ModeA = ifelse(ModeA == "Web", paste(wave_a_label, "Web"), paste(wave_a_label, "Paper")),
+      ModeB = ifelse(ModeB == "Web", paste(wave_b_label, "Web"), paste(wave_b_label, "Paper"))
+    )
+  
+  p <- ggplot(plot_df, aes(x = eppA, y = eppB)) +
+    geom_point(alpha = 0.1) +
+    geom_smooth(formula = y ~ x, se = TRUE, method = "lm", color = "#1C7984", linewidth = 2) +
+    stat_cor(p.accuracy = 0.001, method = "spearman",
+             label.x = 0.02, label.y = -0.25,
+             cor.coef.name = "rho", color = "black", size = 5.4, r.accuracy = 0.01) +
+    labs(x = paste0("Model-estimated posterior probabilities at ", wave_a_label),
+         y = paste0("Model-estimated posterior probabilities at ", wave_b_label)) +
+    scale_x_continuous(breaks = seq(0, 1, by = 0.2)) +
+    scale_y_continuous(breaks = seq(0, 1, by = 0.2), expand = c(0.1, 0.1)) +
+    facet_grid(
+      factor(ModeB, levels = c(paste(wave_b_label, "Web"), paste(wave_b_label, "Paper"))) +
+      factor(PatternB, levels = c("pIndifferent", "pExtremist", "pSoftsat")) ~
+      ModeA +
+      factor(PatternA, levels = c("pSoftsat", "pExtremist", "pIndifferent"))
+    ) +
+    papaja::theme_apa() +
+    theme(
+      axis.title   = element_text(size = 17),
+      axis.text.y  = element_text(size = 14, color = "black"),
+      axis.text.x  = element_text(angle = 40, size = 14),
+      strip.text   = element_text(size = 16)
+    )
+  
+#  ggsave(filename, p,
+#       width = 16, height = 13, dpi = 300)
+  p
+}
+
+# ── Create the plots ───────────────────────────────────────────────────────────
+cors_w2_by_wave1 <- make_cor_plot(wave1_long, w2_long, "Wave 1", "Wave 2", "LC_Cors_w2_by_w1_RR.png")
+cors_wave3_by_w2   <- make_cor_plot(w2_long, wave3_long,   "Wave 2", "Wave 3",   "LC_Cors_w3_by_w2_RR.png")
+cors_wave3_by_wave1   <- make_cor_plot(wave1_long, wave3_long,   "Wave 1", "Wave 3",   "LC_Cors_w3_by_w1_RR.png")
+
+
+
+```
+
+
+
+
+# Barplot on Omegas
+
+```{r}
+
+p_load("readxl")
+
+omegas_df <- read_excel(paste0(userpath, "Sample_Summaries.xlsx"), 
+     sheet = "Omegas") |> 
+  select(Wave:ProbOmega)
+
+
+head(omegas_df,9)
+
+
+```
+
+```{r}
+p_load(ggh4x)
+
+
+n_labels <- bind_rows(
+  df |> count(LC = LC_wave1, Mode = Mode_wave1) |> mutate(Wave = "Wave 1"),
+  df |> count(LC = LC_w2, Mode = Mode_w2) |> mutate(Wave = "Wave 2"),
+  df |> count(LC = LC_wave3,   Mode = Mode_wave3)   |> mutate(Wave = "Wave 3")
+) |>
+  filter(!is.na(LC), !is.na(Mode)) |>
+  mutate(
+    label = paste0("N = ", format(n, big.mark = ",", scientific = FALSE)),
+    LC   = fct_relevel(LC,   "Softsat", "Indifferent", "Extremist"),
+    Mode = fct_relevel(Mode, "Paper", "Web")
+  )
+
+
+cbPalette <- c("#000000", "#4F6E6A", "#CC79A7","#433C0A", "#39B4FF",  "#F0E442","#D55E00","#61AD7B", "#7003A9" ) 
+
+
+omegas_plot <-
+  omegas_df |>
+    mutate(Indicator = fct_relevel(Indicator,
+                           "Extremes selection",
+                           "Midpoint selection",
+                           "Open question nonresponse",
+                           "Closed question nonresponse",
+                           "Weak nondiff (often)",
+                           "Strong nondiff (sometimes)",
+                           "Strong nondiff (often)",
+                           "Break-off",
+                           "Speeding"),
+           LC   = fct_relevel(LC,   "Softsat", "Indifferent", "Extremist"),
+           Mode = fct_relevel(Mode, "Paper", "Web")) |> 
+  group_by(Wave, Mode, Indicator) |> 
+  ggplot(aes(x = Indicator, y = ProbOmega, fill = Indicator, color = Indicator)) +
+  geom_bar(stat = "identity", position = position_dodge2()) +
+  
+  geom_text(
+    data = n_labels,
+    aes(x = -Inf, y = Inf, label = label),
+    inherit.aes = FALSE,
+    hjust = -0.1, vjust = 1.5,
+    size = 2.5,          # considerably smaller than 4.5
+    color = "black"
+  ) +
+  
+  facet_grid(rows = vars(Wave), cols = vars(LC, Mode), drop = TRUE) +
+  
+  force_panelsizes(
+    rows = unit(rep(28, 3), "mm"),   # 3 Waves à 28 mm Höhe
+    cols = unit(rep(30, 6), "mm")    # 6 LC/Mode-Kombis à 30 mm Breite
+  ) +
+  
+  scale_fill_manual(values  = cbPalette) +
+  scale_color_manual(values = cbPalette) +
+  
+  labs(y = expression(paste("Estimated Endorsement Probability (", hat(omega)[~italic("m|k")], ")"))) +
+  
+  papaja::theme_apa() +
+  guides(
+    fill  = guide_legend(
+      nrow      = 2,
+      keywidth  = unit(0.35, "cm"),
+      keyheight = unit(0.35, "cm")
+    ),
+    color = "none"      # merge fill & color -> only one legend
+  ) +
+  theme(
+    axis.text.x      = element_blank(),
+    axis.title.x     = element_blank(),
+    axis.ticks.x     = element_blank(),
+    axis.text.y      = element_text(size = 8, color = "black"),
+    axis.title.y     = element_text(family = "sans", size = 9, color = "black"),
+    strip.text.x       = element_text(size = 8, face = "bold", margin = margin(t = 2, b = 2, unit = "pt")),
+    strip.text.y     = element_text(size = 8, face = "bold", angle = -90),
+    panel.spacing    = unit(0.3, "cm"),                  # enger als 0.8
+    panel.grid.major.y = element_line(color = "grey", linewidth = 0.4, linetype = 3),
+    legend.position      = "bottom",
+    #legend.justification = "left",
+    legend.location      = "plot",
+    legend.title         = element_text(size = 9, face = "bold"),
+    legend.text          = element_text(size = 8),       # runter von 12
+    legend.box.background = element_rect(linetype = "solid", color = "lightgrey"),
+    legend.box.margin    = margin(1, 1, 1, 1),
+    legend.margin        = margin(2, 2, 2, 2, unit = "mm"),
+    plot.margin          = margin(2, 2, 2, 2, unit = "mm")
+  )
+
+omegas_plot
+
+# ggsave(file   = "Plots/omegas.png",
+#        plot   = omegas_plot,
+#        width  = 220,
+#        height = 128,
+#        units  = "mm",
+#        dpi    = 300)
+```
+
+
+
+
+
+
+
+## Omegas SensAn
+
+```{r}
+#| label: omegas Plot SensAn
+
+
+omegas_df_sensan <- read_excel(paste0(userpath, "Sample_Summaries.xlsx"), 
+     sheet = "Omegas_SA") |> 
+  select(Wave:ProbOmega) |> 
+  mutate(
+    LC = case_when(
+      LC %in% "Complex" ~ "Extremist*",
+      TRUE ~ LC
+    )
+  )
+
+
+head(omegas_df_sensan,9)
+
+
+n_labels_sensan <-
+  w1_sensan |>
+  count(LC, Mode) |>
+  filter(!is.na(LC), !is.na(Mode)) |>
+  mutate(
+    LC = case_when(
+      LC %in% "Complex" ~ "Extremist*",
+      TRUE ~ LC
+    )
+  ) |> 
+  mutate(
+    label = paste0("N = ", format(n, big.mark = ",", scientific = FALSE)),
+    LC   = fct_relevel(LC,   "Softsat", "Indifferent", "Extremist", "Extremist*"),
+    Mode = fct_relevel(Mode, "Paper", "Web")
+  )
+
+
+cbPalette <- c("#000000", "#4F6E6A", "#CC79A7","#433C0A", "#39B4FF",  "#F0E442","#D55E00","#61AD7B", "#7003A9" ) 
+
+omegas_plot_sensan <-
+  omegas_df_sensan |>
+    mutate(Indicator = fct_relevel(Indicator,
+                           "Extremes selection",
+                           "Midpoint selection",
+                           "Open question nonresponse",
+                           "Closed question nonresponse",
+                           "Weak nondiff (often)",
+                           "Strong nondiff (sometimes)",
+                           "Strong nondiff (often)",
+                           "Break-off",
+                           "Speeding"),
+           LC = fct_relevel(LC, 
+                            "Softsat",
+                            "Indifferent",
+                            "Extremist", 
+                            "Extremist*"),
+           Mode = fct_relevel(Mode, 
+                              "Paper", 
+                              "Web")) |> 
+  group_by(Mode, Indicator) |> 
+  ggplot(aes(x = Indicator, y = ProbOmega, fill = Indicator, color = Indicator)) +
+  geom_bar(stat = "identity",
+           position=position_dodge2()) +
+  
+  
+  geom_text(
+    data = n_labels_sensan,
+    aes(x = -Inf, y = Inf, label = label),
+    inherit.aes = FALSE,
+    hjust = -0.1,
+    vjust = 1.5,
+    size = 3.5,
+    color = "black"
+  ) +
+  
+  facet_grid(#rows = vars(Wave), 
+             cols = vars(LC, Mode), drop = TRUE)+ #+ coord_flip()
+  scale_fill_manual(values=cbPalette) +
+  labs (x = "",
+        y = expression(paste("Estimated Endorsement Probability (", hat(omega)[~italic("m|k")], ")"))) +
+       
+  
+  scale_color_manual(values=cbPalette) +
+  papaja::theme_apa() +
+    # guides(color = guide_legend(override.aes = list(size = 0.2))) +
+  theme(legend.position = "bottom",
+       # axis.text.x = element_text(angle = 30, family = "arial", hjust = 1, size = 11, color = "black"),
+       axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+       axis.ticks.x = element_blank(),
+       axis.text.y = element_text(size = 8, color = "black"),
+        axis.title.y = element_text(family = "sans", size = 8, color = "black"),
+         legend.title = element_text(size = 8, face = "bold"), 
+              legend.text  = element_text(size = 8),
+        strip.text = element_text(size = 10),
+        panel.spacing = unit(0.2, "cm", data = NULL),
+        panel.grid.major.y = element_line(color = "grey",
+                                          linewidth = 0.4,
+                                          linetype = 3),
+       legend.box.background = element_rect(linetype = "solid", color = "lightgrey")) +
+  guides(
+  fill  = guide_legend(
+    title         = "Indicator",
+    nrow          = 3,                          # 2 rows for the 9 items
+    keywidth      = unit(0.3, "cm"),            # Kästchen schmaler
+    keyheight     = unit(0.3, "cm"),            # Kästchen flacher
+    override.aes  = list(size = 0.2)
+  ),
+  color = "none"                                # doppelte Legende (fill+color) unterdrücken
+)
+
+omegas_plot_sensan
+  
+
+
+ # ggsave(file = "Plots/omegas_sensan.png", omegas_plot_sensan,
+ #         width = 165.1, height = 100, units = "mm", dpi = 300)
+ #        
+     # width  = 297,
+     #   height = 0.5*220,
+     #   units  = "mm",
+     #   dpi    = 300)
+```
+
+
+
+# Barplot Global
+
+```{r}
+p_load("readxl")
+
+global_df <- read_excel(paste0(userpath, "Sample_Summaries.xlsx"), 
+     sheet = "GlobalProp") |> 
+  select(Model:ProbMostLikely) |>
+  mutate(Model = str_replace(Model, "_", "\n")) |> 
+  mutate(Model = fct_relevel(Model,
+                             "Wave 1 Paper\n (N = 5,670)", 
+                             "Wave 1 Web\n (N = 3,777)", 
+                             "Wave 2 Paper\n (N = 5,105)",
+                             "Wave 2 Web\n (N = 3,795)",
+                             "Wave 3 Paper\n (N = 2,559)",
+                             "Wave 3 Web\n (N = 5,568)"))
+
+
+head(global_df,9)
+
+global_df_sensan <- read_excel(paste0(userpath, "Sample_Summaries.xlsx"), 
+     sheet = "GlobalProp_SA") |> 
+  select(Model:ProbMostLikely) |>
+  slice(1:6) |> 
+  mutate(Model = str_replace(Model, "_", "\n")) |> 
+  mutate(Model = fct_relevel(Model,
+                             "Paper\n (N = 10,556)", 
+                             "Web\n (N = 6,467)"),
+         Pattern = case_when(Pattern %in% c("Complex", "Extremist") ~"Extremist*",
+                             TRUE ~Pattern))
+
+
+head(global_df_sensan,9)
+
+```
+
+
+
+```{r}
+# plain labels first (no plotmath expressions)
+global_df_long <- global_df |>
+  pivot_longer(
+    cols = c(PropPostProb, ProbMostLikely),
+    names_to  = "ProbType",
+    values_to = "Value"
+  ) |>
+  mutate(ProbType = factor(ProbType,
+                           levels = c("PropPostProb", "ProbMostLikely")))
+                           # no labels are applied in this step
+
+# Labeller-Funktion separat definieren
+prob_labeller <- as_labeller(
+  c(PropPostProb   = "A: pi_hat",
+    ProbMostLikely = "B: macP_c"),
+  default = label_parsed   # <-- parsed-Modus
+)
+
+# for parsed labels, plotmath syntax is passed as a character string:
+prob_labeller <- as_labeller(
+  c(PropPostProb   = "bold('A:')~'Based on'~hat(pi)[italic('c')]",
+    ProbMostLikely = "bold('B:')~'Based on'~italic(macP)[italic('c')]"),
+  default = label_parsed
+)
+
+global_grid <- global_df_long |>
+  ggplot(aes(x = Model, y = Value, fill = Pattern)) +
+  geom_bar(stat = "identity",
+           position = position_stack(),
+           width = 0.7) +
+  scale_fill_manual(
+    values = c("#1C7984", "#CCA52E", "#702963"),
+    labels = c("Extremist", "Indifferent", "Softsat")
+  ) +
+    
+facet_grid(
+  . ~ ProbType,
+  scales  = "fixed",
+  labeller = prob_labeller
+) +
+
+  labs(y = "Proportion") +
+  papaja::theme_apa() +
+  theme(
+    axis.text.x  = element_text(angle = 45, hjust = 1, vjust = 1,
+                                family = "sans", size = 8, color = "black"),
+    axis.text.y  = element_text(color = "black"),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(color = "black", size = 12),
+    panel.grid.major.y = element_line(color = "grey", linewidth = 0.4, linetype = 3),
+    strip.text   = element_text(size = 9, hjust = 0),  # Panel-Labels "A" / "B"
+    legend.position = "bottom",
+    legend.title = element_text(size = 12, face = "bold" ),
+    legend.text  = element_text(size = 11)
+  )
+
+global_grid
+
+#ggsave(file = "Plots/global_grid.png", global_grid,
+#       width = 165.1, height = 110, units = "mm", dpi = 300)
+
+```
+
+
+
+
+
+
+
+
+# Barplot Sensan
+
+
+```{r}
+# plain labels first (no plotmath expressions)
+global_df_sensan_long <- global_df_sensan |>
+  pivot_longer(
+    cols = c(PropPostProb, ProbMostLikely),
+    names_to  = "ProbType",
+    values_to = "Value"
+  ) |>
+  mutate(ProbType = factor(ProbType,
+                           levels = c("PropPostProb", "ProbMostLikely")))
+                           # no labels are applied in this step
+
+# Labeller-Funktion separat definieren
+prob_labeller <- as_labeller(
+  c(PropPostProb   = "A: pi_hat",
+    ProbMostLikely = "B: macP_c"),
+  default = label_parsed   # <-- parsed-Modus
+)
+
+# for parsed labels, plotmath syntax is passed as a character string:
+prob_labeller <- as_labeller(
+  c(PropPostProb   = "bold('A:')~'Based on'~hat(pi)[italic('c')]",
+    ProbMostLikely = "bold('B:')~'Based on'~italic(macP)[italic('c')]"),
+  default = label_parsed
+)
+
+global_grid_sensan <-
+  global_df_sensan_long |>
+  ggplot(aes(x = Model, y = Value, fill = Pattern)) +
+  geom_bar(stat = "identity",
+           position = position_stack(),
+           width = 0.7) +
+  scale_fill_manual(
+    values = c("#004D40", "#CCA52E", "#702963"),
+    labels = c("Extremist*", "Indifferent", "Softsat")
+  ) +
+  
+facet_grid(
+  . ~ ProbType,
+  scales  = "fixed",
+  labeller = prob_labeller
+) +
+  labs(y = "Proportion") +
+  papaja::theme_apa() +
+  theme(
+    axis.text.x  = element_text(
+                                family = "sans", size = 10, color = "black"),
+    axis.text.y  = element_text(color = "black"),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(color = "black", size = 12),
+    panel.grid.major.y = element_line(color = "grey", linewidth = 0.4, linetype = 3),
+    strip.text   = element_text(size = 9, hjust = 0),  # Panel-Labels "A" / "B"
+    legend.position = "bottom",
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text  = element_text(size = 11)
+  )
+
+global_grid_sensan
+
+#ggsave(file = "Plots/global_grid_sensan.png", global_grid_sensan,
+#       width = 140.1, height = 110, units = "mm", dpi = 300)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+# Multinoms SocDem
+
+## Sample
+
+```{r}
+
+p_load("readxl")
+
+mn_df <- 
+  read_excel(paste0(userpath, "Sample_Summaries.xlsx"), 
+     sheet = "MultinomSocDem") |> 
+  select(Model:UUOR) |>
+  mutate(Model = str_replace(Model, "_", "\n")) |> 
+     #    Variable = str_replace(Variable, "_", "\n")) |>
+    mutate(Model = fct_relevel(Model,
+                               "Wave 1 Paper\n (N = 5,670)", 
+                               "Wave 1 Web\n (N = 3,777)", 
+                               "Wave 2 Paper\n (N = 5,105)",
+                               "Wave 2 Web\n (N = 3,795)",
+                               "Wave 3 Paper\n (N = 2,559)",
+                               "Wave 3 Web\n (N = 5,568)")) |> 
+   
+  mutate(
+    # clean NAs and infinite values
+    across(c(`Est (log-Odds)`, LLLogit, UUlogit), 
+           ~ if_else(is.infinite(.x), NA_real_, .x)),
+    
+    # significance is evaluated on the logit scale
+    significant = case_when(
+      LLLogit > 0 & UUlogit > 0 ~ "positive",
+      LLLogit < 0 & UUlogit < 0 ~ "negative",
+      TRUE                       ~ "insignificant"
+    ),
+    
+    # flags marking estimates outside the plotting range
+    clipped_high = is.na(`Est (log-Odds)`) | UUlogit > 2 | `Est (log-Odds)` > 2,
+    clipped_low  = is.na(`Est (log-Odds)`) | LLLogit < -2 | `Est (log-Odds)` < -2,
+    clipped      = clipped_high | clipped_low,
+    
+    # plotted values (clipped on both sides)
+    Est_plot = pmin(pmax(`Est (log-Odds)`, -2), 2),
+    LL_plot  = pmin(pmax(LLLogit, -2), 2),
+    UU_plot  = pmin(pmax(UUlogit, -2), 2),
+    
+    # arrow start points (minimum shaft length of 0.3 units)
+    arrow_start_high = pmin(LL_plot,  1.7),
+    arrow_start_low  = pmax(UU_plot, -1.7)
+  )
+  
+  
+head(mn_df,9)
+posn_d2 <- position_dodge(1)
+
+
+#p_load(ggh4x)
+
+multinom <- 
+  mn_df |> 
+  ggplot(aes(x     = Est_plot,
+             y     = as.factor(Variable),
+             group = Model,
+             color = significant)) +
+  
+  geom_point(data = ~filter(., !clipped),
+             aes(x = Est_plot),
+             size = 1,
+             position = posn_d2) +
+  geom_errorbarh(data = ~filter(., !clipped),
+                 aes(xmin = LL_plot, xmax = UU_plot),
+                 position = posn_d2) +
+  geom_point(data = ~filter(., clipped_high & !clipped_low),
+             aes(x = Est_plot),
+             size = 1,
+             position = posn_d2) +
+  geom_segment(data = ~filter(., clipped_high & !clipped_low),
+               aes(x = arrow_start_high, xend = 2,
+                   y = as.factor(Variable), yend = as.factor(Variable)),
+               arrow     = arrow(length = unit(0.2, "cm"), type = "closed"),
+               linewidth = 0.6,
+               position  = posn_d2,
+               show.legend = FALSE) +
+  geom_point(data = ~filter(., clipped_low & !clipped_high),
+             aes(x = Est_plot),
+             size = 1,
+             position = posn_d2) +
+  geom_segment(data = ~filter(., clipped_low & !clipped_high),
+               aes(x = arrow_start_low, xend = -2,
+                   y = as.factor(Variable), yend = as.factor(Variable)),
+               arrow     = arrow(length = unit(0.2, "cm"), type = "closed"),
+               linewidth = 0.6,
+               position  = posn_d2,
+               show.legend = FALSE) +
+  
+  geom_vline(xintercept = 0, color = "grey", linetype = "dotted") +
+  
+  scale_color_manual(
+    values = c("negative"      = "#1A85FF",
+               "positive"      = "#D41159",
+               "insignificant" = "#4D4E4E"),
+    labels = c("negative"      = "Negative association (CI < 0)",
+               "positive"      = "Positive association (CI > 0)",
+               "insignificant" = "Non-significant (CI includes 0)"),
+    name  = NULL,
+    guide = guide_legend(override.aes = list(linewidth = 1, shape = 19))
+  ) +
+  
+  coord_cartesian(xlim = c(-2, 2), clip = "off") +
+  scale_x_continuous(breaks = seq(-2, 2, by = 1)) +
+  
+  labs(x = "Log-Odds with 95%-CI", y = NULL) +
+  
+  facet_grid(rows = vars(Comparison),
+             cols = vars(Model),
+             drop = TRUE) +
+  
+  force_panelsizes(
+    rows = unit(rep(40, 3), "mm"),   # jedes der 3 Row-Panels: 40 mm hoch
+    cols = unit(rep(28, 6), "mm")    # jedes der 6 Col-Panels: 28 mm breit
+  ) +
+  
+  papaja::theme_apa() +
+  theme(
+    axis.title.x    = element_text(size = 8, margin = margin(t = 5)),
+    axis.text.x     = element_text(size = 8, color = "black"),
+    axis.text.y     = element_text(size = 8, color = "black"),
+    strip.text.x    = element_text(size = 9, margin = margin(b = 3, t = 3)),
+    strip.text.y    = element_text(size = 9, angle = -90, margin = margin(l = 2, r = 2)),
+    axis.title.y    = element_blank(),
+    panel.grid.major.y   = element_line(color = "grey", linewidth = 0.1),
+    legend.position      = "bottom",
+    legend.margin        = margin(t = 8),
+    legend.box.spacing   = unit(0, "pt"),
+    legend.text          = element_text(size = 8),
+    panel.spacing        = unit(0.2, "cm"),
+    panel.background     = element_rect(fill = "white"),
+    strip.background     = element_rect(fill = "grey92", color = NA),
+    plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "mm")
+  )
+
+multinom
+
+# ggsave(file   = "Plots/multinom.png",
+#        plot   = multinom,
+#        width  = 240,
+#        height = 155,
+#        units  = "mm",
+#        dpi    = 300, 
+#        bg = "transparent")
+
+```
+
+
+
+## SensAn
+
+
+```{r}
+
+p_load("readxl")
+
+mn_df_sensan <- 
+  read_excel(paste0(userpath, "Sample_Summaries.xlsx"), 
+     sheet = "MultinomSocDem_SA") |> 
+  select(Model:UUOR) |>
+  mutate(Model = str_replace(Model, "_", "\n")) |> 
+     #    Variable = str_replace(Variable, "_", "\n")) |>
+    mutate(Model = fct_relevel(Model,
+                               "Paper\n (N = 10,556)", 
+                               "Web\n (N = 6,467)")) |> 
+   
+  mutate(
+    # clean NAs and infinite values
+    across(c(`Est (log-Odds)`, LLLogit, UUlogit), 
+           ~ if_else(is.infinite(.x), NA_real_, .x)),
+    
+    # significance is evaluated on the logit scale
+    significant = case_when(
+      LLLogit > 0 & UUlogit > 0 ~ "positive",
+      LLLogit < 0 & UUlogit < 0 ~ "negative",
+      TRUE                       ~ "insignificant"
+    ),
+    
+    # flags marking estimates outside the plotting range
+    clipped_high = is.na(`Est (log-Odds)`) | UUlogit > 2 | `Est (log-Odds)` > 2,
+    clipped_low  = is.na(`Est (log-Odds)`) | LLLogit < -2 | `Est (log-Odds)` < -2,
+    clipped      = clipped_high | clipped_low,
+    
+    # plotted values (clipped on both sides)
+    Est_plot = pmin(pmax(`Est (log-Odds)`, -2), 2),
+    LL_plot  = pmin(pmax(LLLogit, -2), 2),
+    UU_plot  = pmin(pmax(UUlogit, -2), 2),
+    
+    # arrow start points (minimum shaft length of 0.3 units)
+    arrow_start_high = pmin(LL_plot,  1.7),
+    arrow_start_low  = pmax(UU_plot, -1.7)
+  ) |> 
+  
+  mutate(
+  Comparison = case_when(
+    Comparison %in% c("Extremist* vs. Indifferent") ~ "Extremist*\n vs. Indifferent",
+    Comparison %in% c("Extremist* vs. Softsat")     ~ "Extremist*\n vs Softsat",
+    Comparison %in% "Indifferent vs. Softsat"       ~ "Indifferent\n vs. Softsat"
+  ),
+  # set the category order explicitly:
+  Comparison = fct_relevel(Comparison,
+    "Extremist*\n vs. Indifferent",
+    "Extremist*\n vs Softsat",
+    "Indifferent\n vs. Softsat"
+  )
+)
+  
+
+
+
+multinom_sensan <- 
+  mn_df_sensan |> 
+  ggplot(aes(x     = Est_plot,
+             y     = as.factor(Variable),
+             group = Model,
+             color = significant)) +
+  
+  geom_point(data = ~filter(., !clipped),
+             aes(x = Est_plot),
+             size = 1,
+             position = posn_d2) +
+  geom_errorbarh(data = ~filter(., !clipped),
+                 aes(xmin = LL_plot, xmax = UU_plot),
+                 position = posn_d2) +
+  geom_point(data = ~filter(., clipped_high & !clipped_low),
+             aes(x = Est_plot),
+             size = 1,
+             position = posn_d2) +
+  geom_segment(data = ~filter(., clipped_high & !clipped_low),
+               aes(x = arrow_start_high, xend = 2,
+                   y = as.factor(Variable), yend = as.factor(Variable)),
+               arrow     = arrow(length = unit(0.2, "cm"), type = "closed"),
+               linewidth = 0.6,
+               position  = posn_d2,
+               show.legend = FALSE) +
+  geom_point(data = ~filter(., clipped_low & !clipped_high),
+             aes(x = Est_plot),
+             size = 1,
+             position = posn_d2) +
+  geom_segment(data = ~filter(., clipped_low & !clipped_high),
+               aes(x = arrow_start_low, xend = -2,
+                   y = as.factor(Variable), yend = as.factor(Variable)),
+               arrow     = arrow(length = unit(0.2, "cm"), type = "closed"),
+               linewidth = 0.6,
+               position  = posn_d2,
+               show.legend = FALSE) +
+  
+  geom_vline(xintercept = 0, color = "grey", linetype = "dotted") +
+  
+  scale_color_manual(
+    values = c("negative"      = "#1A85FF",
+               "positive"      = "#D41159",
+               "insignificant" = "#4D4E4E"),
+    labels = c("negative"      = "Negative (CI < 0)",
+               "positive"      = "Positive (CI > 0)",
+               "insignificant" = "Non-significant (CI includes 0)"),
+    name  = "Association",
+    guide = guide_legend(override.aes = list(linewidth = 1, shape = 19),
+                         title = "Association",
+                         nrow = 1)
+  ) +
+  
+  coord_cartesian(xlim = c(-2, 2), clip = "off") +
+  scale_x_continuous(breaks = seq(-2, 2, by = 1)) +
+  
+  labs(x = "Log-Odds with 95%-CI", y = NULL) +
+  
+  facet_grid(rows = vars(Comparison),
+             cols = vars(Model),
+             drop = TRUE) +
+  
+  force_panelsizes(
+    rows = unit(rep(40, 3), "mm"),   # 3 Comparison-Rows à 40 mm
+    cols = unit(rep(28, 3), "mm")    # ggf. Spaltenanzahl anpassen
+  ) +
+  
+  papaja::theme_apa() +
+  theme(
+    axis.title.x    = element_text(size = 8, margin = margin(t = 5)),
+    axis.text.x     = element_text(size = 8, color = "black"),
+    axis.text.y     = element_text(size = 7, color = "black"),
+    strip.text.x    = element_text(size = 9, margin = margin(b = 3, t = 3)),
+    strip.text.y    = element_text(size = 9, angle = -90, margin = margin(l = 2, r = 2)),
+    axis.title.y    = element_blank(),
+    panel.grid.major.y   = element_line(color = "grey", linewidth = 0.1),
+    
+    legend.title = element_text(size = 8,face = "bold"),
+    legend.position      = "bottom",
+    legend.justification = "left",    # <-- linksbündig
+    legend.location      = "plot",    # <-- relativ zum gesamten Plot, nicht nur Panel
+    legend.box.margin = margin(l = 5, unit = "mm"),
+    legend.margin        = margin(t = 2, l = 5, unit = "mm"),
+    legend.box.spacing   = unit(0, "pt"),
+    plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "mm"),
+    
+    legend.text          = element_text(size = 8),
+    panel.spacing.x      = unit(0.7, "lines"),
+    panel.spacing.y      = unit(2, "lines"),
+    panel.background     = element_rect(fill = "white"),
+    strip.background     = element_rect(fill = "grey92", color = NA)
+  )
+
+multinom_sensan
+
+# ggsave(file  = "Plots/multinom_sensan.png",
+#        plot  = multinom_sensan,
+#        width  = 165,    # usable width of an A4 portrait page
+#        height = 165,    # height limited to an A4 portrait page incl. margins
+#        units  = "mm",
+#        dpi    = 300)
+```
+
+
+
+
+
+
+
+

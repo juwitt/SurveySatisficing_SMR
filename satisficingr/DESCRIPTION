@@ -1,0 +1,19 @@
+Package: satisficingr
+Title: Useful Functions for Measuring Survey Satisficing 
+Version: 0.0.0.9000
+Authors@R: 
+    person("Anonymized", "Anonymized",  email = "anonymized@anonymized.de", role = c("aut", "cre"), comment = c(ORCID = "Anonymized"))
+Description: Survey Satisficing is a threat to data quality as it significantly contributes to measurement bias.
+    It is usually not a walk in the park to systematically investigate this 
+    behavior after data collection. 
+    Nevertheless, it is essential in order to assess the validity and 
+    reliability of the data collected. This package provides useful functions 
+    that can significantly reduce the effort involved.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Imports: 
+    data.table,
+    dplyr,
+    sjmisc

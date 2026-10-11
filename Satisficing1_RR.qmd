@@ -1,0 +1,5919 @@
+---
+title: "Satisficing: Data Cleaning & Variables Generation | Revision"
+author: "anonymized"
+date: "`r Sys.time()`"
+format:
+  pdf:
+    documentclass: article
+    pdf-engine: xelatex
+    geometry: margin=2cm
+    toc: true
+    toc-depth: 6
+    number-sections: true
+    fig-width: 7
+    fig-height: 5
+    include-in-header:
+      text: |
+        \usepackage{fvextra}
+        \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
+        \usepackage{longtable}
+        \usepackage{booktabs}
+    execute:
+      warning: false
+      message: false
+      eval: true
+      echo: true
+---
+
+
+```{r}
+#| label: setup
+#| include: false
+#| eval: true
+
+#knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+#rm(list = ls())
+
+# --- Paths (anonymized for review) ---
+# Point these to your local copies of the survey data before running.
+# The raw data cannot be redistributed; they are available upon request
+# from the Research Data Centre Social Cohesion (RDC-RISC).
+userpath  <- "path/to/repo/"
+datapath  <- "path/to/data/"
+datapath2 <- "path/to/data_aux/"
+cachepath <- "path/to/cache/"
+
+
+hg <- function(df){
+   df |> head() |> glimpse()
+}
+
+ai <- function(df){
+  df |> select(-any_of(c("cid", "pid", "hid", "lfd"))) |> hg()
+}
+
+
+```
+
+
+
+
+```{r}
+#| label: libraries-and-data-load
+#| eval: true
+#| include: false
+
+
+
+## Install packages if not installed
+#install.packages('pacman')
+#library(pacman) # package management tool
+
+#if(!require(pacman)){
+#  install.packages("pacman", dependencies = TRUE)
+#}
+
+# The {satisficingr} helper package is provided in the supplementary materials;
+# install it locally if necessary, e.g.:
+#remotes::install_local("path/to/satisficingr")
+
+library(pacman)
+p_load("kableExtra",
+       "knitr",           # to echo/eval/include code from code chunks
+       "haven",           # read in stata files
+       
+       "labelled",        # manipulate metadata as variable labels
+       "sjmisc",          # set_na
+       "survey",          # glm
+       "modelsummary",    # modelsummary and -plots
+       "sandwich",        #vcovCL
+       "DescTools",        #PseudoR2 for polr-Obj
+       "papaja",          # APA ggplot theme (github.com/crsh/papaja; not on CRAN)
+       "satisficingr",
+       "GGally",          # intercors
+       "PerformanceAnalytics", # intercors
+       "gridExtra",    # Nondiff grid
+       "tidyverse",       # data manipulation
+      "lavaan"
+ )
+
+
+
+```
+
+
+## Get data
+
+-   load data
+
+```{r}
+#| label: load-data
+#| eval: true
+
+
+
+
+
+## Wave 1
+
+# drop all-zero/all-missing columns (keeps only variables with at least one
+# value > 0); applied to every imported .dta file
+w1p_full <- read_dta(paste0(datapath,"w1_main.dta")) |> 
+  select(where(~any(.x > 0, na.rm = TRUE))) 
+
+
+# w1 with breakoff-codes
+w1p_bo <- read_dta(paste0(datapath,"w1_breakoff.dta")) |> select(where(~any(.x > 0, na.rm = TRUE))) 
+#lfd, hhlfd
+
+
+# sample design weights (bland, gkpol7, gebjahr, age)
+weights_full <- read_dta(paste0(datapath,"w1_design_weights.dta"))
+#lfd, hhpe_lfd
+
+w1p_up <- read_dta(paste0(datapath,"w1_up.dta")) |> select(c(lfd, psundvote, psunpartoth, pedu01, peduoth01)) 
+
+
+
+
+## Wave 2
+
+w2p_bo <- read_dta(paste0(datapath,"w2_breakoff.dta")) |> 
+  select(where(~any(.x > 0, na.rm = TRUE)))
+# lfd, hh_lfd
+
+# w2 durations
+w2_dur <- read_dta(paste0(datapath,"w2_durations.dta")) |>
+  select(where(~any(.x > 0, na.rm = TRUE)))
+
+
+# raw data
+w2up <- read_dta(paste0(datapath,"w2_up.dta")) |>
+  select(
+    lfd,
+    ppartytend, pothpartend, 
+    pdiscrim12, pdiscrimoth)
+  
+
+
+## Wave 3
+
+w3p_full <- read_dta(paste0(datapath,"w3_main.dta")) |>
+  filter(ZG %in% c(1,2)) |> 
+  select(where(~any(.x > 0, na.rm = TRUE))) |>
+  select(-c(cid, syear))
+#pid, cid, hid
+#pgmode
+
+w3_dur <-
+  read_dta(paste0(datapath,"w3_durations.dta")) |> 
+  filter(ZG %in% c(1,2)) |> 
+  select(where(~any(.x > 0, na.rm = TRUE)))
+
+
+# raw data
+w3_up <- read_dta(paste0(datapath,"w3_up.dta")) |>  
+  filter(ZG %in% c(1,2)) |> select(pid, pedu01.raw = pedu01, peduoth01.raw = peduoth01,
+                                    poccstat.raw = poccstat, poccupation_isco08, 
+                                    plifevent14.raw = plifevent14,
+                                    plifevoth14.raw = plifevoth14,
+                                    pnetmodwill02.raw = pnetmodwill02,
+                                    pmember11.raw = pmember11,
+                                    pmemberoth.raw = pmemberoth,
+                                    pdevice05.raw = pdevice05,
+                                    pothdevice.raw = pothdevice) |>  
+  left_join(
+    read_dta(paste0(datapath,"w3_main.dta"))   |>
+      # free-text item: network module: other reason for unwillingness (rds)
+      select(pid, pnetmodwill03), by = "pid")
+
+
+mode_palette <- c("PAPI" = "#1C7984", "CAWI" = "#702963")
+
+posn_d <- position_dodge(0.4)
+
+```
+
+
+# Wave 1
+
+# Adjust Variable `psunpartoth` and `peduoth`
+
+
+```{r}
+#| label: count-nonsubstantial-answers
+#| eval: true
+
+w1p_up |>
+  mutate(
+    nonsub = case_when(
+      psundvote == 8 &
+      ((psunpartoth %in% c("...", "....", "xxx", "XXX", "abc", "ABC", "K.a.", "k.A.")) |
+        grepl("-1", psunpartoth) | 
+        grepl("-9", psunpartoth)
+       ) ~ 1,
+      TRUE ~ 0)
+      
+    ) |> frq(nonsub)
+
+# 75 missings, 99 missings incl. nonsubstantial
+```
+
+```{r}
+#| label: psunpartoth-and-peduoth
+#| eval: true
+
+
+w1p_up <- 
+w1p_up |>
+  mutate(
+    psundvoteOthWhich = case_when(
+      
+      # only applies to those who answered "Other"
+      psundvote != 8 ~ -2,
+      
+      # responded by naming a political party
+      psundvote == 8 &
+        # longest: Partei Mensch, Umwelt, Tierschutz
+        (nchar(psunpartoth) >= 3 & nchar(psunpartoth) <= 35 &
+    
+        !(psunpartoth %in% c("...", "....", "xxx", "XXX", "abc", "ABC", "K.a.", "k.A.")) &
+        !grepl("-1", psunpartoth) & 
+        !grepl("-9", psunpartoth) &
+        !grepl("KEIN", psunpartoth) &
+        !grepl("Kein", psunpartoth) &
+        !grepl("Frage", psunpartoth) &
+        !grepl("nicht", psunpartoth) &
+        !grepl("NICHT", psunpartoth) &
+        !grepl("UMGÜLTIG", psunpartoth) &
+        !grepl("GEHEIM", psunpartoth)) ~ 1,
+      
+      
+      psundvote == 8 & !(
+        
+        (nchar(psunpartoth) >= 3 & nchar(psunpartoth) <= 35) &
+    
+        !(psunpartoth %in% c("...", "....", "xxx", "XXX", "abc", "ABC", "K.a.", "k.A.")) &
+        !grepl("-1", psunpartoth) & 
+        !grepl("-9", psunpartoth) &
+        !grepl("KEIN", psunpartoth) &
+        !grepl("Kein", psunpartoth) &
+        !grepl("Frage", psunpartoth) &
+        !grepl("nicht", psunpartoth) &
+        !grepl("NICHT", psunpartoth) &
+        !grepl("UMGÜLTIG", psunpartoth) &
+        !grepl("GEHEIM", psunpartoth)) ~ -1),
+      
+
+    
+    
+    
+    peduOthWhich = case_when(
+      pedu01 != 6  ~ -2,
+      
+      pedu01 == 6 & (nchar(peduoth01) >= 3 & #nchar(peduoth01) <= 20 &
+    
+        !(peduoth01 %in% c("...", "....", "xxx", "XXX", "abc", "ABC", "K.a.", "k.A.")) &
+        !grepl("-1", peduoth01) & 
+        !grepl("-9", peduoth01)) ~ 1, 
+      
+      
+      pedu01 == 6 & !(
+        nchar(peduoth01) >= 3 & #nchar(peduoth01) <= 20 &
+    
+        !(peduoth01 %in% c("...", "....", "xxx", "XXX", "abc", "ABC", "K.a.", "k.A.")) &
+        !grepl("-1", peduoth01) & 
+        !grepl("-9", peduoth01)) ~ -1)) 
+```
+
+
+# Join w1 
+## w1  `Age` & `Age_cat` & exclude `Age Inconsistency`  and `No Panelconsent`
+
+```{r}
+#| label: build-w1-and-Age
+#| eval: true
+  
+w1p_complete <-
+  # join the vars from df weights_full...
+  weights_full |> select(lfd, gebjahr.weights = gebjahr) |> 
+  # ...to w1p_full
+  right_join(w1p_full, by = "lfd") |>
+  # only take those vars and...
+  select(lfd, pid, hid, gebjahr.weights) |> 
+  # join them to w1p_bo, from which 
+  right_join(w1p_bo |> rename(peduoth01.bo = peduoth01,
+                                psunpartoth.bo = psunpartoth,
+                                pedu01.bo = pedu01,
+                                pedu02.bo = pedu02,
+                                psundvote.bo = psundvote), 
+             by = "lfd") |>
+  # ... you rename one variable
+  rename(pbirthyear_w1 = pbirthyear
+         
+         ) |> 
+  
+  left_join(w2p_bo |> 
+              select(lfd, 
+                     pbirthyear_w2 = pbirthyear,
+                     intvollst_w2 = intvollst, 
+                     plifesat01_w2 = plifesat01), by = "lfd") |> 
+  left_join(w3p_full |>
+              select(pid, 
+                     pbirthyear_w3 = pbirthyear, 
+                     intvollst_w3 = intvollst), by = "pid") |> 
+  # join pnoinc from raw data
+  left_join(w1p_up |>
+              rename(peduoth01.up = peduoth01,
+                     pedu01.up = pedu01,
+                     psundvote.up = psundvote,
+                     psunpartoth.up = psunpartoth), by = "lfd") |> 
+
+  # use the raw (unverified) data for the free text, but take the break-off code from w1p_bo
+  mutate(
+    
+     peduOthWhich = case_when(pedu01.bo == -10 | peduoth01.bo == -10  ~-10,
+                         TRUE ~ peduOthWhich), 
+    
+     psundvoteOthWhich = case_when(psundvote.bo == -10| psunpartoth.bo == -10 ~-10,
+                              TRUE  ~ psundvoteOthWhich),
+     
+     psundvoteOthWhich.text = case_when(psundvoteOthWhich == -10 ~ "-10", 
+                             TRUE ~ psunpartoth.up),
+     
+     peduOthWhich.text = case_when(peduOthWhich == -10 ~ "-10", 
+                             TRUE ~ peduoth01.up),
+     
+         
+         # bring ppanelcons to its original pattern
+         ppanelcons = case_when(
+           intvollst == 3 ~ -10, 
+           TRUE ~ ppanelcons),
+         
+     
+      # if the respondent broke off before the first item, count as non-participation
+         intvollst_w2 = case_when(
+           plifesat01_w2 == -10 ~ NA, 
+           TRUE ~ intvollst_w2)
+     ) |> 
+  
+  rename(
+    pedu01 = pedu01.bo,
+    psundvote = psundvote.bo,
+    pedu02 = pedu02.bo
+  ) |> 
+  
+  select(
+    - (contains("edu") & (ends_with(".bo") | ends_with(".up"))),
+    - (contains("undvote") & (ends_with(".bo") | ends_with(".up"))),
+    - contains("psunpartoth"))
+
+# N = 33 obs. is.na(pbirthyear_w1) => substituted N = 7 obs. with information from gebjahr.weights, pbirthyear_w2, pbirthyear_w3  
+
+w1p_complete <-
+  w1p_complete |> mutate(
+    
+     PartWaves = case_when(
+     
+      ((intvollst_w2 %in% c(1, 2, 3)) & (intvollst_w3 %in% c(1, 2, 3))) ~ "3 waves",
+      intvollst_w2 %in% c(1, 2, 3) | intvollst_w3 %in% c(1, 2, 3) ~ "2 waves",
+       
+      TRUE ~ "1 wave"), 
+    
+    PartWaves = factor(PartWaves, levels = c("1 wave", "2 waves", "3 waves")),
+    
+  
+    byear = case_when(
+        pbirthyear_w1 > 0 ~ as.double(pbirthyear_w1),
+        (is.na(pbirthyear_w1) | (pbirthyear_w1 < 0) & !is.na(gebjahr.weights)) ~ as.double(gebjahr.weights), 
+        
+        (is.na(pbirthyear_w1) | (pbirthyear_w1 < 0)) & 
+          is.na(gebjahr.weights) & 
+          pbirthyear_w2 > 0 ~ as.double(pbirthyear_w2),
+        
+        (is.na(pbirthyear_w1) | (pbirthyear_w1 < 0)) & 
+          is.na(gebjahr.weights) & 
+          (is.na(pbirthyear_w2) | (pbirthyear_w2 < 0)) & 
+          pbirthyear_w3 > 0 ~ as.double(pbirthyear_w3), 
+        TRUE ~ NA
+    ),
+    
+    bmnth = case_when(
+      is.na(byear)       ~ NA, 
+      pbirthmnth > 0     ~ pbirthmnth,
+      TRUE               ~ 1),
+        
+    myob = my(paste(bmnth, byear, sep = "-")),
+      
+    ymd_interview = ymd(interviewdatum),
+      
+  Age = floor(decimal_date(ymd_interview) - decimal_date(myob))) |> 
+  
+  filter(!is.na(pid)) #|> 
+  # this removes 2 duplicate entries (lfd %in% c(...))
+# nrow() #=17027
+  
+
+w1p_adults <- 
+  w1p_complete |> 
+# exclude n = 4 obs. of Age < 18 (2x16, 2x17yrs)
+    filter(Age >= 18 | is.na(Age))  # n = 17,023
+
+
+w1p_adults <- 
+  w1p_adults |> 
+# find  observations whose pbirthyear statements differ between the waves  
+  #AgeConsistency: helper variable
+  mutate(AgeConsistency = case_when(
+     (as.double(pbirthyear_w1) > 0 & as.double(pbirthyear_w2) > 0 & as.double(pbirthyear_w1) != as.double(pbirthyear_w2)) |
+     (as.double(pbirthyear_w1) > 0 & as.double(pbirthyear_w3) > 0 & as.double(pbirthyear_w1) != as.double(pbirthyear_w3)) |
+     (as.double(pbirthyear_w2) > 0 & as.double(pbirthyear_w3) > 0 & as.double(pbirthyear_w2) != as.double(pbirthyear_w3)) ~ "Inconsistent",
+      TRUE ~ "Not inconsistent")) #|>   frq(AgeConsistency) N = 279 inconsistent: THESE ARE STILL INCLUDED
+
+
+w1p <- 
+  w1p_adults |> 
+  mutate(
+    Sample = 
+      case_when(
+        PartWaves %in% "1 wave" | 
+        AgeConsistency == "Inconsistent" ~ "sensan",
+       PartWaves %in% c("2 waves", "3 waves") & AgeConsistency == "Not inconsistent" ~ "Sample"
+        
+      )
+  ) 
+
+w1p |> frq(Sample)
+
+quantile(w1p$Age, prob = c(0.25, 0.5, 0.75), na.rm = TRUE)
+#35, 53, 65
+
+
+```
+
+**CAVE**:
+- The data frame `w1p |> filter(Sample == "sensan")` is used for the sensitivity analysis. It contains all individuals aged 18 and older who participated in at least the first wave; only 2 duplicate entries were excluded.
+- Subsequent computations use only `w1p |> filter(Sample %in% c("Sample"))`
+
+```{r}
+#| eval: true
+#| label: quantiles
+
+
+# quantiles do not differ between the samples:
+
+w1p |>
+     filter(Sample == "Sample") |>
+     pull(Age) |>
+     summary()
+
+#   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA's 
+#  18.00   35.00   53.00   50.62   65.00   97.00       1 
+ w1p |>
+   #  filter(Sample == "Sample") |>
+     pull(Age) |>
+     summary()
+#   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA's 
+#  18.00   35.00   53.00   51.22   65.00  101.00      26 
+```
+
+
+
+```{r}
+#| eval: true
+# function to create quartile groups with range labels
+create_quantile_with_range <- function(x, varname) {
+  # Compute quartiles
+  quantile_group <- ntile(x, 3)
+  
+  # find the minimum/maximum values per group
+  ranges <- tapply(x, quantile_group, function(vals) {
+    c(min(vals, na.rm = TRUE), max(vals, na.rm = TRUE))
+  })
+  
+  # create labels
+  labels <- sapply(1:3, function(i) {
+    if(!is.null(ranges[[i]])) {
+      sprintf("%s_T%d[%.1f-%.1f]", varname, i, ranges[[i]][1], ranges[[i]][2])
+    } else {
+      paste0(varname, "_T", i)
+    }
+  })
+  
+  # create the factor with labels
+  factor(quantile_group, levels = 1:3, labels = labels)
+}
+
+
+
+# apply to Age in the sensitivity analysis sample
+w1p <-
+  w1p |>
+  mutate(
+    Age_cat_sensan = create_quantile_with_range(Age, "Age")
+  )
+
+# apply to Age in the analysis sample
+w1p <-
+  w1p |> 
+  filter(Sample == "Sample") |> 
+  mutate(
+    Age_cat_Sample = create_quantile_with_range(Age, "Age")
+  ) |> 
+  select(Age_cat_Sample, pid) |> 
+  right_join(w1p, by = "pid")
+
+
+
+cat("\n=== SUMMARY TABLE FOR PANELISTS ===\n")
+frq(w1p$Age_cat_sensan)
+frq(w1p$Age_cat_Sample)
+
+
+w1p <- 
+  w1p |> 
+  mutate(
+    Age_cat_Sample = case_when(
+      # derived via:
+      #read_dta(paste0(datapath,"w1_up.dta")) |> filter(lfd == <case id>) |> select(contains("geb")| contains("yr") | contains("year")| contains("birth") ) |> ai()
+      # NOTE: re-insert the real case id instead of the anonymization
+      # placeholder "<case id>" before re-running this branch
+      lfd == "<case id>" & is.na(Age_cat_Sample) ~"Age_T2[40.0-60.0]",
+      TRUE ~Age_cat_Sample
+    ),
+    
+    
+    # 26 missings on Age_cat_sensan carried over to Age_cat
+
+    Age_cat_sensan = 
+           case_when(is.na(Age_cat_sensan) ~"Age_T2[41.0-61.0]",
+                     TRUE ~Age_cat_sensan)
+  ) 
+  
+w1p |> 
+  frq(Age_cat_Sample, Age_cat_sensan)
+
+```
+
+## w1  `BreakOff`
+
+```{r}
+#| label: build-break-off
+#| eval: true
+
+w1p <- 
+  w1p |> mutate(BreakOff = case_when(
+    intvollst %in% c(2,3) ~ "Break-off",
+    qmethod == 3 ~ "PAPI",              #PAPI
+    (qmethod == 4 & intvollst == 1) ~ "No Break-off"
+  ),
+    BreakOff = factor(BreakOff, levels = c("No Break-off", "Break-off", "PAPI")))
+
+  
+
+w1p |> count(Sample, BreakOff)
+w1p |>  frq(BreakOff)
+#121 cases in Sample, 542 altogether
+
+
+```
+
+## w1  `Gender`, `Education`, `Employment`, `ChildHH`, `PartWave`
+
+```{r}
+#| label: build-gender,-education
+#| eval: true
+
+sufw1t1 <- 
+    read_dta(paste0(datapath2,"w1_pgen_long.dta")) |> filter(wave == "W1T1") |> select(-c(hid, ZG))
+
+
+
+w1p <- 
+  w1p |> 
+  left_join(
+    sufw1t1, 
+    by = c("lfd"="pid")) |>  
+  mutate(    
+  Education3 = case_when(
+      pgisced11_scp %in% c(0, 1, 2, 3, 4) ~ "Non-tertiary (ISCED 0-4)",
+      pgisced11_scp %in% c(5, 6, 7, 8) ~ "Tertiary (ISCED 5-8)",
+      TRUE ~"missing"
+  ),
+   Education3 = factor(Education3, levels = c("Non-tertiary (ISCED 0-4)", "Tertiary (ISCED 5-8)", "missing")),
+  
+  Education_i = case_when(
+    !(Education3 %in% "missing") ~ Education3,
+    
+    
+    Education3 %in% "missing" &
+    # Priority 1: unambiguous cases (CASMIN)
+    #[4] Post-secondary non-tertiary education
+  pgcasmin_scp %in% c(4) ~ "Non-tertiary (ISCED 0-4)",
+  
+  Education3 %in% "missing" &
+    #[5] Short-cycle tertiary education 
+   pgcasmin_scp %in% c(5) ~ "Tertiary (ISCED 5-8)",
+
+  
+  Education3 %in% "missing" &
+      # Priority 2: unambiguous cases (pemplstat)
+      pgemplst_scp == 10 ~ "Tertiary (ISCED 5-8)",
+  Education3 %in% "missing" &
+      pgemplst_scp == 5 ~ "Non-tertiary (ISCED 0-4)",
+      
+  Education3 %in% "missing" &
+      # Priority 3: pgisco08_scp
+      substr(pgisco08_scp, 1, 1) %in% c("1", "2") ~ "Tertiary (ISCED 5-8)",
+    Education3 %in% "missing"&
+      substr(pgisco08_scp, 1, 1) %in% c("3", "4", "5", "6", "7", "8", "9") ~ "Non-tertiary (ISCED 0-4)",
+  
+  Education3 %in% "missing" &
+      
+      # Priority 4: conservative assumptions (minijob, homemaker)
+      pgemplst_scp %in% c(4, 12) ~ "Non-tertiary (ISCED 0-4)",
+      
+      TRUE ~ "missing"
+    ),
+  
+  Education_i = factor(Education_i, levels = c("Non-tertiary (ISCED 0-4)", "Tertiary (ISCED 5-8)", "missing")),
+  
+  
+    Education_method = case_when(
+      !(Education3 %in% "missing") ~ "original",
+      !(Education_i %in% "missing") ~ "imputed",
+      TRUE ~ "missing"
+    ),
+  
+  # COLLAPSE EDUCATION CATEGORIES
+  Education = 
+    
+    case_when(
+      Education3 %in% c("Non-tertiary (ISCED 0-4)", "Tertiary (ISCED 5-8)") ~Education3,
+      
+      Education3 %in% "missing" &
+      Education_i  %in%  c("Non-tertiary (ISCED 0-4)", "Tertiary (ISCED 5-8)") ~Education_i,
+  
+  Education3 %in% "missing" & Education_i %in% "missing" ~ "missing"),
+  
+  Education = factor(Education, levels = c("Non-tertiary (ISCED 0-4)", 
+                                           "Tertiary (ISCED 5-8)",
+                                           "missing")),
+  
+    
+  Gender = case_when(
+   
+    pgender == 2 ~ "Female",
+    
+    # identify as "male" or "non-binary"
+    pgender %in% c(1, 3) ~ "Not female",
+    # n = 136 -10, n = 37 -1
+    TRUE ~ "Not female"),
+    
+    Gender = factor(Gender, levels = c("Female", "Not female")),
+  
+  
+    
+    Employment = case_when(
+      
+      pempstat1 == 1 ~ "Full-time",
+      pempstat1 %in% c(2:6, 11) ~ "Part-time or flexible",
+      pempstat1 == 9 ~ "Retirement",
+      pempstat1 %in% c(7, 8, 10, 12, 13) ~ "Not currently employed, training",
+      TRUE ~ "missing"),
+    Employment = factor(Employment, levels = c("Full-time", "Part-time or flexible", "Not currently employed, training", "Retirement", "missing")),
+    
+    ChildHH = case_when(
+      hhhage02 == 0 | hhhage03 == 1 ~ "No child in hh",
+      hhhage02 > 0 & hhhage03 != 1 ~ "Child in hh",
+      TRUE ~ "missing"),
+    ChildHH = factor(ChildHH, levels = c("No child in hh", "Child in hh", "missing")),
+    #1408 NA
+    
+    AllWavesComplete = case_when(
+      
+      #n = 7368
+      (intvollst == 1 & intvollst_w2 == 1 & intvollst_w3 ==1) ~ "All waves complete",
+      TRUE ~ "Not complete"),
+    
+    AllWavesComplete = factor(AllWavesComplete, levels = c("Not complete", "All waves complete"))
+                    
+  
+  ) 
+
+  
+
+w1p |> filter(Sample == "Sample") |> select(Education3, Education_i, Education_method, Education, 
+            Gender, AllWavesComplete, Employment, ChildHH) |> summary()
+
+
+```
+
+
+
+## w1 `Migration`
+- self or parents' birthcountry is not Germany, or no German nationality
+
+```{r}
+#| label: migration
+#| eval: true
+
+
+
+w1p <- 
+  w1p |> 
+  mutate(
+    Mig = case_when(
+      # origin is not Germany, parents not born in Germany, or no German nationality
+      porigin == 2 | pmigback01 == 2| pnation01 == 0 ~ "Yes", 
+      porigin < 0 & pmigback01 < 0 & pnation01 > 0 ~ "Not applicable",
+      TRUE ~ "No"
+    ),
+    Mig = factor(Mig, levels = c( "No", "Yes"))
+  ) 
+```
+
+
+## w1 `Income`
+
+
+```{r}
+#| label: build-income-variable
+#| eval: true
+
+
+w1p <- 
+  w1p |> 
+
+# Equivalized income: 
+  # according to OECD weighting procedure (<14yrs => weight factor 0.3, >14yrs => weight factor 0.5) 
+    
+    rowwise() |> 
+    
+    mutate(
+      hhsize = ifelse(hhhsize < 0, NA, hhhsize),
+      u14 = ifelse(hhhage02 < 0, NA, hhhage02),
+      ue14 = hhsize - u14,
+
+      equivSize = (1 + 0.5 * (ue14 - 1) + 0.3 * u14),
+      EquivIncome_num = case_when(
+        hhhincnet < 0 ~ NA,
+        TRUE ~ (12 * (hhhincnet/equivSize)))) |>
+     ungroup() |> 
+  mutate(
+        EquivIncome_sensan = create_quantile_with_range(EquivIncome_num, "EquivIncome"),
+        EquivIncome_sensan = case_when(
+          is.na(EquivIncome_sensan) ~ "missing",
+          EquivIncome_sensan == "EquivIncome_T1[0.0-20800.0]" ~ "EquivIncome_T1min",
+          EquivIncome_sensan == "EquivIncome_T2[20800.0-31200.0]" ~ "EquivIncome_T2medium",
+          EquivIncome_sensan == "EquivIncome_T3[31200.0-56800480.0]" ~ "EquivIncome_T3max"),
+        EquivIncome_sensan = factor(EquivIncome_sensan, levels = c("EquivIncome_T2medium",
+                                                     "EquivIncome_T1min",
+                                                     "EquivIncome_T3max", 
+                                                     "missing"))
+        )
+
+w1p <- 
+  w1p |> 
+  filter(Sample == "Sample") |> 
+  mutate(
+   EquivIncome_Sample = create_quantile_with_range(EquivIncome_num, "EquivIncome"),
+        EquivIncome_Sample = case_when(
+          is.na(EquivIncome_Sample) ~ "missing",
+          EquivIncome_Sample == "EquivIncome_T1[0.0-21600.0]" ~ "EquivIncome_T1min",
+          EquivIncome_Sample == "EquivIncome_T2[21600.0-32000.0]" ~ "EquivIncome_T2medium",
+          EquivIncome_Sample == "EquivIncome_T3[32000.0-56800480.0]" ~ "EquivIncome_T3max"),
+        EquivIncome_Sample = factor(EquivIncome_Sample, levels = c("EquivIncome_T2medium",
+                                                     "EquivIncome_T1min",
+                                                     "EquivIncome_T3max", 
+                                                     "missing"))) |> 
+  select(lfd, EquivIncome_Sample) |> 
+  right_join(w1p, by = "lfd")
+    
+  
+w1p |> group_by(Sample) |> slice(1:5) |>  ungroup() |> select(lfd, Sample, contains("Income"))
+
+w1p |> frq(EquivIncome_Sample, EquivIncome_sensan) # 1,366 and 3,765, respectively
+
+```
+
+
+```{r}
+#| label: fig-EquivIncomeDistribution
+#| eval: true
+#| include: true
+#| fig-height: 5
+#| fig-show: hold
+
+w1p |> filter(EquivIncome_num > 1 & EquivIncome_num <= 200000) |> 
+  ggplot( aes(EquivIncome_num,fill = Sample)) +
+  geom_histogram(color="#e9ecef") + #"#69b3a2", color="#e9ecef") +
+    ggtitle("Distribution of Equivalized Income") +
+  facet_wrap(~Sample) +
+  labs(caption = "N = 62 > 200 000 excluded from this plot for clarity ") +
+    papaja::theme_apa() 
+
+
+```
+
+
+## w1 `Speeding`
+
+See @fig-Speedingcategorization
+
+```{r}
+#| label: prepare-Speedingcategorization
+#| eval: true
+#| include: true
+
+
+
+# w1 durations
+w1_dur <- 
+  read_dta(paste0(datapath,"w1_durations.dta")) |>
+  select(where(~any(.x > 0, na.rm = TRUE)))
+#lfd, hhlfd
+
+# Visualization of choice of 10% border for speeders
+
+ 
+quantiles_data <-
+  w1p |> select(lfd, Sample, Age, Age_cat_sensan, BreakOff) |> 
+  inner_join(w1_dur, by = "lfd") |> 
+ 
+  mutate(
+   
+
+  
+    # not include into calculation of quantile borders: N = 490 Break-off cases
+  interviewdauer = ifelse(BreakOff == "Break-off", NA, interviewdauer)) |>  #filter(is.na(interviewdauer)) |> nrow()
+  group_by(Sample, Age_cat_sensan) |> 
+ 
+
+  summarise(
+    `1` = quantile(interviewdauer, probs = 0.01, na.rm = TRUE),
+    `3` = quantile(interviewdauer, probs = 0.03, na.rm = TRUE),
+    `5` = quantile(interviewdauer, probs = 0.05, na.rm = TRUE),
+    `10` = quantile(interviewdauer, probs = 0.1, na.rm = TRUE),
+    `15` = quantile(interviewdauer, probs = 0.15, na.rm = TRUE),
+    `20` = quantile(interviewdauer, probs = 0.2, na.rm = TRUE),
+    `25` = quantile(interviewdauer, probs = 0.25, na.rm = TRUE),
+    `33` = quantile(interviewdauer, probs = 0.33, na.rm = TRUE),
+    `50` = quantile(interviewdauer, probs = 0.5, na.rm = TRUE),
+    `66` = quantile(interviewdauer, probs = 0.66, na.rm = TRUE), 
+    `70` = quantile(interviewdauer, probs = 0.7, na.rm = TRUE),
+    `75` = quantile(interviewdauer, probs = 0.75, na.rm = TRUE),
+    `80` = quantile(interviewdauer, probs = 0.80, na.rm = TRUE),
+    `85` = quantile(interviewdauer, probs = 0.85, na.rm = TRUE),
+    `95` = quantile(interviewdauer, probs = 0.95, na.rm = TRUE)
+  )
+
+# reshape the data for plotting
+plot_data <- quantiles_data |>
+  gather(key = "Quantile", value = "Value", -c(Sample, Age_cat_sensan)) |> 
+  mutate(Quantile = as.numeric(Quantile))
+```
+
+
+
+```{r}
+#| label: fig-Speedingcategorization
+#| fig-show: hold
+#| fig-cap: Speeding by Sample and Age Group
+#| include: true
+#| eval: true
+#| fig-height: 4
+
+
+ggplot(plot_data, 
+       aes(y = Quantile, 
+           x = Value, 
+         # group = interaction(Sample, Age_cat),
+          color = Age_cat_sensan)) +
+  geom_line() +
+  #geom_hline(yintercept = 10, linetype = "dashed") +
+  scale_y_continuous(breaks = seq(0,100, by = 5)) +
+  facet_wrap(~ Sample, ncol = 4) +
+  labs(x = "Interview duration", y = "Quantile",
+       title = "Quantiles of interview duration per age group") +
+  papaja::theme_apa()
+
+
+```
+
+```{r}
+#|label: w1-build-speeding-variable
+#|eval: true
+
+
+w1_dur <- 
+  w1_dur |> 
+  left_join(w1p |> select(lfd, contains("Age_cat"), Sample)) |>
+  # Step 1: set 0 to NA in all item columns
+  mutate(across(ends_with("_dur"),
+           ~ if_else(.x == 0, NA_real_, .x))
+  )  |>
+    
+    
+  group_by(Age_cat_sensan) |>
+  # Step 2: compute medians (0/NA excluded)
+  mutate(
+    across(ends_with("_dur"), 
+           list(md = ~median(.x, na.rm = TRUE)), 
+           .names = "{.col}_sensan_md")
+  ) |>
+  
+  # Step 3: speeding indicators (_s) with group-specific medians
+  # speeded: item answered in less than 40% of the age-group median time
+  mutate(
+    across(
+      .cols = ends_with("_dur"),
+      .fns = ~ case_when(
+        is.na(.x) ~ NA_real_,
+        .x < 0.4 * get(paste0(cur_column(), "_sensan_md")) ~ 1,
+        TRUE ~ 0
+      ),
+      .names = "{.col}_sensan_s"
+    )
+  ) |>
+  ungroup() |>
+  
+  group_by(Age_cat_Sample) |>
+  # Step 2: compute medians (0/NA excluded)
+  mutate(
+    across(ends_with("_dur"), 
+           list(md = ~median(.x, na.rm = TRUE)), 
+           .names = "{.col}_Sample_md")
+  ) |>
+  
+  # Step 3: speeding indicators (_s) with group-specific medians
+  mutate(
+    across(
+      .cols = ends_with("_dur"),
+      .fns = ~ case_when(
+        is.na(.x) ~ NA_real_,
+        .x < 0.4 * get(paste0(cur_column(), "_Sample_md")) ~ 1,
+        TRUE ~ 0
+      ),
+      .names = "{.col}_Sample_s"
+    )
+  ) |>
+  ungroup() |>
+  
+  # Step 4: sum scores
+  rowwise() |>
+  mutate(
+    Age_cat_sensan = if_else(
+      is.na(Age_cat_sensan),
+      factor("Age_T2[41.0-61.0]", levels = levels(Age_cat_sensan)),
+      Age_cat_sensan), 
+    
+    Age_cat_Sample = if_else(
+      Sample == "Sample" & is.na(Age_cat_Sample),
+      factor("Age_T2[40.0-60.0]", levels = levels(Age_cat_Sample)),
+      Age_cat_Sample),
+    
+    # number of items whose duration is < 0.4 * the item's median duration across all respondents in the same age group (can be 0 if the respondent did not speed on any item)
+    ItemsSpeeded_sensan = sum(c_across(ends_with("_sensan_s")), na.rm = TRUE),
+    TotalItems_sensan = sum(!is.na(c_across(ends_with("_sensan_s")))),
+    ProportionSpeeding_sensan = ItemsSpeeded_sensan / TotalItems_sensan)
+
+
+w1_dur <- 
+  w1_dur |>
+  filter(Sample == "Sample") |>
+  
+  mutate(
+   
+    ItemsSpeeded_Sample = sum(c_across(ends_with("_Sample_s")), na.rm = TRUE),
+    TotalItems_Sample = sum(!is.na(c_across(ends_with("_Sample_s")))),
+    ProportionSpeeding_Sample = ItemsSpeeded_Sample / TotalItems_Sample
+  ) |>
+  ungroup() |> 
+  select(lfd, ItemsSpeeded_Sample, TotalItems_Sample, ProportionSpeeding_Sample) |> 
+  right_join(w1_dur, by = "lfd")
+# 
+# w1_dur |> pull(TotalItems_Sample) |> summary()
+#    Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA's 
+#   130.0   146.0   148.0   150.2   154.0   191.0    2692 
+
+w1_dur |> select(Sample, contains("pfrspcons07_du"), contains("Age_cat")) |> head(10) |> glimpse()
+
+
+w1_dur |>
+  select(ItemsSpeeded_sensan, TotalItems_sensan, ProportionSpeeding_sensan,
+         ItemsSpeeded_Sample, TotalItems_Sample, ProportionSpeeding_Sample) |>
+  pivot_longer(everything(), names_to = "Variable", values_to = "Value") |>
+  ggplot(aes(x = Value)) +
+      geom_histogram(fill="#69b3a2", color="#e9ecef") +
+
+ # geom_density(fill = "steelblue", alpha = 0.5) +
+  facet_wrap(~Variable, scales = "free") +
+  theme_minimal() +
+  labs(title = "Distribution of Speeding Indicators (complete sample)")
+
+w1_dur |>
+  filter(Sample == "Sample") |> 
+  select(ItemsSpeeded_Sample, TotalItems_Sample, ProportionSpeeding_Sample) |>
+  pivot_longer(everything(), names_to = "Variable", values_to = "Value") |>
+  ggplot(aes(x = Value)) +
+      geom_histogram(fill="#69b3a2", color="#e9ecef") +
+
+ # geom_density(fill = "steelblue", alpha = 0.5) +
+  facet_wrap(~Variable, scales = "free") +
+  theme_minimal() +
+  labs(title = "Distribution of Speeding Indicators (analysis sample only)")
+
+# Complete sample (sensitivity analysis only)
+w1_dur |> filter(ProportionSpeeding_sensan>0.000) |> nrow()
+w1_dur |> filter(ProportionSpeeding_sensan >0 & ProportionSpeeding_sensan<0.014388) |> pull(ItemsSpeeded_sensan) |> summary()  #1-2 Items - marginal
+
+# upper median range: 
+w1_dur |> filter(ProportionSpeeding_sensan>=0.014388) |> pull(ItemsSpeeded_sensan) |> summary()  #1-132 Items
+
+# Analysis sample
+w1_dur |> filter(Sample =="Sample" & ProportionSpeeding_Sample>0.000) |> nrow()
+w1_dur |> filter(Sample == "Sample" & ProportionSpeeding_Sample >0 & ProportionSpeeding_Sample<0.013699) |> pull(ItemsSpeeded_Sample) |> summary()  #1-2 Items - marginal
+
+
+# upper median range
+w1_dur |> filter(Sample == "Sample" & ProportionSpeeding_Sample>=0.013699) |> pull(ItemsSpeeded_Sample) |> summary()  #1-116 Items
+
+
+#### TOP 10 MOST SPEEDED ITEMS
+
+ # filter the _s columns
+ s_sensan_cols <- w1_dur |> 
+     select(ends_with("_sensan_s")) |> 
+     names()
+ 
+ # compute column sums (number of 1s, ignoring NAs)
+ w1_dur |> 
+     summarise(across(all_of(s_sensan_cols), ~ sum(.x == 1, na.rm = TRUE))) |> 
+     pivot_longer(everything(), names_to = "variable", values_to = "sum_1er") |> 
+     arrange(desc(sum_1er)) |> 
+   head(10)
+ 
+# variable  sum_1er
+# ppanelcons_dur_sensan_s	648		
+# pedu02_dur_sensan_s	632		
+# pcohes03_dur_sensan_s	467		
+# hhhincnet_dur_sensan_s	466		
+# preligion_dur_sensan_s	460		
+# pcohes02_dur_sensan_s	430		
+# pgrpknow01_dur_sensan_s	416		
+# plabincbrut_net_pnoinc_dur_sensan_s	374		
+# pladder01_dur_sensan_s	371		
+# pedu01_dur_sensan_s	370	
+
+ # filter the _s columns
+ s_Sample_cols <- w1_dur |> 
+     select(ends_with("_Sample_s")) |> 
+     names()
+ 
+ # compute column sums (number of 1s, ignoring NAs)
+ w1_dur |> 
+     summarise(across(all_of(s_Sample_cols), ~ sum(.x == 1, na.rm = TRUE))) |> 
+     pivot_longer(everything(), names_to = "variable", values_to = "sum_1er") |> 
+     arrange(desc(sum_1er)) |> 
+   head(10)
+
+ 
+
+
+
+
+w1_dur |> 
+  #filter(Sample == "Sample") |> 
+  # with cutoff line
+ggplot(aes(x = ProportionSpeeding_sensan)) +
+  geom_density(alpha = 0.6, fill = "orange") +
+  geom_vline(xintercept = 0.014388, linetype = "dashed", color = "red", linewidth = 1) +
+  annotate("text", x = 0.014388, y = 0, label = "Cutoff = 0.014388", 
+           hjust = -0.1, vjust = -1, color = "red") +
+  labs(title = "Distribution of Proportion Speeding (SensitivityAnalysis)",
+       x = "Proportion Speeding", 
+       y = "Density") +
+  theme_minimal()
+
+
+
+w1_dur |> 
+  #filter(Sample == "Sample") |> 
+  # with cutoff line
+ggplot(aes(x = ProportionSpeeding_Sample, fill = Sample)) +
+  geom_density(alpha = 0.6, fill = "steelblue") +
+  geom_vline(xintercept = 0.013699, linetype = "dashed", color = "red", linewidth = 1) +
+  annotate("text", x = 0.013699, y = 0, label = "Cutoff = 0.013699", 
+           hjust = -0.1, vjust = -1, color = "red") +
+  labs(title = "Distribution of Proportion Speeding (Analysis Sample)",
+       x = "Proportion Speeding", 
+       y = "Density") +
+  theme_minimal()
+
+
+
+ 
+# consistent threshold: mean + 1 SD per group
+
+thresholds_speeding_w1_sensan <- 
+   w1_dur |>
+   group_by(Age_cat_sensan) |> 
+   summarise(
+     thresh_Speed = mean(ProportionSpeeding_sensan, na.rm = TRUE) + sd(ProportionSpeeding_sensan, na.rm = TRUE),
+     percentile_sp = mean(ProportionSpeeding_sensan <= thresh_Speed, na.rm = TRUE) * 100,
+     prop_above_sp = mean(ProportionSpeeding_sensan > thresh_Speed, na.rm = TRUE) * 100) |> ungroup()
+
+thresholds_speeding_w1_Sample <- 
+   w1_dur |>
+   group_by(Age_cat_Sample) |> 
+   summarise(
+     thresh_Speed = mean(ProportionSpeeding_Sample, na.rm = TRUE) + sd(ProportionSpeeding_Sample, na.rm = TRUE),
+     percentile_sp = mean(ProportionSpeeding_Sample <= thresh_Speed, na.rm = TRUE) * 100,
+     prop_above_sp = mean(ProportionSpeeding_Sample > thresh_Speed, na.rm = TRUE) * 100) |> ungroup()
+
+
+w1_dur <- 
+  w1_dur |> 
+  mutate(
+    Speeding_sensan = case_when(
+      is.na(ProportionSpeeding_sensan) ~NA,
+      Age_cat_sensan == "Age_T1[18.0-41.0]" & ProportionSpeeding_sensan > thresholds_speeding_w1_sensan |> filter(Age_cat_sensan == "Age_T1[18.0-41.0]") |> pull(thresh_Speed) ~ "Speeding",
+      Age_cat_sensan == "Age_T2[41.0-61.0]" & ProportionSpeeding_sensan > thresholds_speeding_w1_sensan |> filter(Age_cat_sensan == "Age_T2[41.0-61.0]") |> pull(thresh_Speed) ~ "Speeding",
+      Age_cat_sensan == "Age_T3[61.0-101.0]" & ProportionSpeeding_sensan > thresholds_speeding_w1_sensan |> filter(Age_cat_sensan == "Age_T3[61.0-101.0]") |> pull(thresh_Speed) ~ "Speeding",
+      TRUE ~"No speeding"
+    ), 
+    Speeding_sensan = factor(Speeding_sensan, levels = c("No speeding", "Speeding")),
+    
+    Speeding_Sample = case_when(
+      is.na(ProportionSpeeding_Sample) ~NA,
+      Age_cat_Sample == "Age_T1[18.0-40.0]" & ProportionSpeeding_Sample > thresholds_speeding_w1_Sample |> filter(Age_cat_Sample == "Age_T1[18.0-40.0]") |> pull(thresh_Speed) ~ "Speeding",
+      Age_cat_Sample == "Age_T2[40.0-60.0]" & ProportionSpeeding_Sample > thresholds_speeding_w1_Sample |> filter(Age_cat_Sample == "Age_T2[40.0-60.0]") |> pull(thresh_Speed) ~ "Speeding",
+      Age_cat_Sample == "Age_T3[60.0-97.0]" & ProportionSpeeding_Sample > thresholds_speeding_w1_Sample |> filter(Age_cat_Sample == "Age_T3[60.0-97.0]") |> pull(thresh_Speed) ~ "Speeding",
+      TRUE ~"No speeding"
+    ), 
+    Speeding_Sample = factor(Speeding_Sample, levels = c("No speeding", "Speeding"))
+  ) 
+
+w1_dur |> frq(Speeding_sensan, Speeding_Sample)
+
+
+# join to w1p 
+w1p <- 
+  w1p |> 
+  left_join(
+    w1_dur |> select(lfd, ProportionSpeeding_sensan, ProportionSpeeding_Sample, Speeding_sensan, Speeding_Sample), by = "lfd"
+  )
+```
+
+
+##  w1 `FreeTextMis`, `Interviewmode`, `TargetGroup` 
+
+```{r}
+#| label: build-vars-Interviewmode,-Panelconsent,-TargetGroup
+#| eval: true
+
+
+
+FreeTextItems <- 
+  
+  w1p |> 
+
+  select(
+  pbirthmnth,
+    pbirthyear_w1, 
+    pcohabgebyear, 
+    pothcount, 
+    pgermstay,
+    peduOthWhich,
+    poccupation_isco08,
+    plabincbrut, 
+    plabincnet,
+    psundvoteOthWhich,
+    hhhsize,
+    hhhage01,
+    hhhage02,
+  hhhincnet) |> colnames()
+
+
+w1p <- 
+  w1p |>   
+
+  mutate(
+    Interviewmode = case_when(
+      qmethod == 3 ~ "PAPI",
+      qmethod == 4 ~ "CAWI"
+    ),
+    Interviewmode = factor(Interviewmode, levels = c("PAPI", "CAWI")),
+    
+    
+    TargetGroup = case_when(
+      ZG == 1 ~ "Anchor",
+      ZG == 2 ~ "HH member"
+    ),
+    TargetGroup = factor(TargetGroup, levels = c("Anchor", "HH member")),
+
+    
+    
+    # apply standard missing codes to poccupation_isco08
+    poccupation_isco08 = case_when(poccupation_isco08 == 0            ~ -2,
+                                   poccupation_isco08 %in% c(8, 9)    ~ -1,
+                                   TRUE                               ~ poccupation_isco08)) |> 
+  
+  rowwise() |> 
+  mutate(
+    
+    freetextmis = sum(across(all_of(FreeTextItems)) %in% c(-1, -9, -4), na.rm = TRUE),
+    
+    N_allFreeTitems = sum(across(all_of(FreeTextItems), ~!. %in% c(-2, -10)), na.rm = TRUE),
+    
+    FrTMisRatio = freetextmis/N_allFreeTitems) |> 
+  
+  ungroup() 
+  
+
+# more groups of Ratio Free text items missings not useful
+w1p |> 
+  reframe(Qu = quantile(FrTMisRatio, prob = c(0.33, 0.66), na.rm = TRUE))  
+
+
+
+
+
+thresholds_FrTMis_w1_sensan <- 
+   w1p |>
+   group_by(Interviewmode) |> 
+   summarise(
+     thresh_FrTMis = mean(FrTMisRatio, na.rm = TRUE) + sd(FrTMisRatio, na.rm = TRUE),
+     percentile_sp = mean(FrTMisRatio <= thresh_FrTMis, na.rm = TRUE) * 100,
+     prop_above_sp = mean(FrTMisRatio > thresh_FrTMis, na.rm = TRUE) * 100) |> ungroup()
+
+thresholds_FrTMis_w1_sensan 
+
+thresholds_FrTMis_w1_Sample <- 
+   w1p |>
+   filter(Sample == "Sample") |> 
+   group_by(Interviewmode) |> 
+   summarise(
+     thresh_FrTMis = mean(FrTMisRatio, na.rm = TRUE) + sd(FrTMisRatio, na.rm = TRUE),
+     percentile_sp = mean(FrTMisRatio <= thresh_FrTMis, na.rm = TRUE) * 100,
+     prop_above_sp = mean(FrTMisRatio > thresh_FrTMis, na.rm = TRUE) * 100) |> ungroup()
+
+thresholds_FrTMis_w1_Sample
+
+w1p <- 
+  w1p |> 
+  mutate(FrTMis_sensan = 
+           case_when(
+             is.na(FrTMisRatio) ~ "Not applicable",
+             Interviewmode == "PAPI" & FrTMisRatio > thresholds_FrTMis_w1_sensan |> filter(Interviewmode == "PAPI") |> pull(thresh_FrTMis) ~ "High",
+             Interviewmode == "CAWI" & FrTMisRatio > thresholds_FrTMis_w1_sensan |> filter(Interviewmode == "CAWI") |> pull(thresh_FrTMis) ~ "High",
+             TRUE ~ "Not high"),
+         FrTMis_sensan = factor(FrTMis_sensan, levels = c("Not high", "High", "Not applicable")),
+         
+         FrTMis_Sample = 
+           case_when(
+             
+             Sample == "sensan" ~NA,
+             is.na(FrTMisRatio) ~ "Not applicable",
+             Interviewmode == "PAPI" & FrTMisRatio > thresholds_FrTMis_w1_Sample |> filter(Interviewmode == "PAPI") |> pull(thresh_FrTMis) ~ "High",
+             Interviewmode == "CAWI" & FrTMisRatio > thresholds_FrTMis_w1_Sample |> filter(Interviewmode == "CAWI") |> pull(thresh_FrTMis) ~ "High",
+             TRUE ~ "Not high"),
+         FrTMis_Sample = factor(FrTMis_Sample, levels = c("Not high", "High", "Not applicable")))
+   
+
+```
+
+
+
+
+
+```{r}
+#| label: fig-FrTMisRatiobyintmodeW1
+#| fig-cap: Free text missings by Interviewmode (w1)
+#| fig-cap-location: top
+#| eval: true
+#| include: true
+#| fig-height: 5
+#| fig-show: hold
+
+
+
+
+plot_freetextmis_w1 <-
+  w1p |> select(lfd, Interviewmode, FrTMisRatio) |> 
+  pivot_longer(cols = 3) |> 
+  
+  ggplot(aes(Interviewmode, value, group = Interviewmode)) +
+  
+  
+  geom_jitter(aes(Interviewmode, value, color = Interviewmode, group = Interviewmode),
+              stat = "identity",
+              position = "jitter",
+              alpha = .3) + 
+  
+  stat_summary(fun = mean, 
+               geom = "point",
+               position = posn_d,
+               size = 4,
+               color = "black") +
+  
+  labs (y = "Ratio Free Text Item Missings",
+        color = "Interviewmode", caption = "Free Text Missings by Interviewmode\n(12 items in w1)") +
+  scale_color_manual(name = "Interviewmode", values = mode_palette) +
+  #guides(color = Interviewmode) +
+ # facet_wrap(~ name, ncol = 5) +
+    
+   papaja::theme_apa() +
+
+   theme(axis.text.x = element_blank(), #element_text(size = 9, angle = 15),
+        axis.ticks.x = element_blank(),
+        axis.line.x = element_blank(),
+        legend.position="bottom")
+      
+plot_freetextmis_w1 
+  
+w1p |> group_by(Interviewmode) |> 
+  summarise(mean.FrTMisRatio = mean(FrTMisRatio, na.rm = TRUE),
+            med.FrTMisRatio = median(FrTMisRatio, na.rm = TRUE),
+            sd.FrTMisRatio = sd(FrTMisRatio, na.rm = TRUE))
+
+w1p |> group_by(Sample, Interviewmode) |> 
+  summarise(mean.FrTMisRatio = mean(FrTMisRatio, na.rm = TRUE),
+            med.FrTMisRatio = median(FrTMisRatio, na.rm = TRUE),
+            sd.FrTMisRatio = sd(FrTMisRatio, na.rm = TRUE))
+
+```
+
+
+
+  
+```{r}
+#| label: fig-freetextmissingbyintmodeW11
+#| eval: true
+#| include: true
+#| fig-cap: Free text missings by Interviewmode
+#| fig-cap-location: top
+#| fig-height: 5
+#| fig-show: hold
+
+
+w1p |>
+  group_by(Interviewmode) |>
+   count(FrTMis_sensan, name="n") |>
+     mutate(share = n/sum(n)) |>
+     ggplot(aes(Interviewmode, share, fill=FrTMis_sensan)) +
+     geom_col(position="stack")   +
+labs(caption = "Free Text Missings by Sample (12 items over w1)", 
+       x = "",
+     y = "Proportion") +
+  
+ papaja::theme_apa()  +
+ theme(axis.text.x = element_text(angle = 30, vjust = 0.5),
+       panel.grid.major.y = element_line(color = "grey", linewidth = 0.1))
+
+w1p |>
+  group_by(Interviewmode) |> filter(!is.na(FrTMis_Sample)) |> 
+   count(FrTMis_Sample, name="n") |>
+     mutate(share = n/sum(n)) |>
+     ggplot(aes(Interviewmode, share, fill=FrTMis_Sample)) +
+     geom_col(position="stack")   +
+labs(caption = "Free Text Missings by Sample (12 items over w1)", 
+       x = "",
+     y = "Proportion") +
+  
+ papaja::theme_apa()  +
+ theme(axis.text.x = element_text(angle = 30, vjust = 0.5),
+       panel.grid.major.y = element_line(color = "grey", linewidth = 0.1))
+
+
+
+w1p |>
+  group_by(Sample, Interviewmode) |>
+   count(FrTMisRatio, name="n") |>
+     mutate(share = n/sum(n)) |>
+     ggplot(aes(Interviewmode, share, fill=FrTMisRatio)) +
+     geom_col(position="stack")   +
+labs(caption = "Free Text Missings Ratio by Sample and Mode (12 items over w1)", 
+       x = "",
+     y = "Proportion") +
+  facet_wrap(~Sample) +
+ papaja::theme_apa()  +
+ theme(#axis.text.x = element_text(angle = 30, vjust = 0.5),
+       panel.grid.major.y = element_line(color = "grey", linewidth = 0.1))
+
+
+
+```
+
+
+
+## w1 Item Nonresponse
+### Problem Vars only
+
+- so-called `problem vars` have been detected manually and have a significantly different appearance between modes
+- to be sure not to measure mere mode effects, these items are tested for significance in their nonresponse rate between modes
+  - if significant difference => item is removed from df
+
+```{r}
+#| label: differences-for-problem.vars-w1
+
+
+problem.vars <- c("pmigback01", "pmigback02",
+          "hhhage03",
+            "pworkexp01", "pworkexp02", "pworkexp03", "pworkexp04", "pworkexp05", "pworkexp06", 
+            "pcohabgender", "pcohabgebyear", 
+            "pothcount", "pnatoth")
+w1p |> 
+  select(lfd, Interviewmode,
+         all_of(problem.vars)) |> #names()
+ # select(all_of(mis_items_w1), Interviewmode) |> 
+  group_by(Interviewmode) |> 
+  summarise(across(pmigback01:pnatoth, 
+                   ~ sum(.x %in% c(-1, -9), na.rm = TRUE) / n(), 
+                   .names = "PropMiss_{.col}")) |> 
+  pivot_longer(-Interviewmode, names_to = c("dummy", "Variable"), 
+               names_pattern = "(PropMiss_)(.*)", values_to = "Prop") |> 
+  select(-dummy) |> 
+  mutate(Variable = factor(Variable, levels = rev(unique(Variable)))) |>  
+
+ggplot(aes(x = Variable, y = Prop, colour = Interviewmode, group = Interviewmode)) +
+  geom_point(size = 1) +
+  geom_line(linewidth = 0.8) +
+  scale_colour_manual(values = mode_palette) +
+  labs(
+    x = "Items",
+    y = "Nonresponse Rate (Proportion)",
+    colour = "Interviewmode",
+    title = "Nonresponse Rate by Item and Mode"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(size = 8, angle = 90, vjust = 0.5),
+    legend.position = "bottom"
+  )
+```
+
+
+```{r}
+#| label: problem-vars-itemnonresponse
+
+
+w1p |> 
+ 
+    select(lfd, Interviewmode,
+           all_of(problem.vars)) |>
+  group_by(Interviewmode) |> 
+  summarise(across(pmigback01:pnatoth, 
+                   ~ sum(.x %in% c(-1, -9), na.rm = TRUE) / n(), 
+                   .names = "PropMiss_{.col}")) 
+
+
+# Absolute counts + N per group
+
+counts <- w1p |>
+  select(lfd, Interviewmode, all_of(problem.vars)) |>
+  group_by(Interviewmode) |>
+  summarise(
+    n = n(),
+    across(all_of(problem.vars),
+           ~ sum(.x %in% c(-1, -9), na.rm = TRUE),
+           .names = "miss_{.col}")
+  )
+
+# Chi-square test per item
+results <- map_dfr(problem.vars, function(var) {
+  col <- paste0("miss_", var)
+  
+  miss  <- counts[[col]]        # c(n_miss_PAPI, n_miss_CAWI)
+  n     <- counts$n             # c(n_PAPI, n_CAWI)
+  notmiss <- n - miss
+  
+  mat <- matrix(c(miss, notmiss), nrow = 2,
+                dimnames = list(c("PAPI", "CAWI"), c("Miss", "NotMiss")))
+  
+  # Fisher when expected cell counts < 5, otherwise chi-squared
+  test <- if (any(chisq.test(mat)$expected < 5)) {
+    fisher.test(mat)
+  } else {
+    chisq.test(mat, correct = FALSE)
+  }
+  
+  tibble(
+    Item       = var,
+    p_value    = test$p.value,
+    method     = test$method,
+    prop_PAPI  = miss[1] / n[1],
+    prop_CAWI  = miss[2] / n[2]
+  )
+}) |>
+  mutate(
+    p_adj      = p.adjust(p_value, method = "BH"),  # Benjamini-Hochberg
+    significant = p_adj < 0.05
+  ) |>
+  arrange(p_adj)
+
+print(results)
+
+
+# all significant except pcohabgender and pcohabgebyear 
+
+
+problem.vars <- c("pmigback01", "pmigback02",
+          "hhhage03",
+            "pworkexp01", "pworkexp02", "pworkexp03", "pworkexp04", "pworkexp05", "pworkexp06", 
+           #"pcohabgender", "pcohabgebyear", 
+            "pothcount", "pnatoth"
+            )
+```
+
+### All other items
+
+```{r}
+#| label: fig-nonrespItemsw1
+#| fig-cap: Nonresponse Items w1
+#| eval: true
+
+w1p |>
+
+  select(lfd, Interviewmode,
+         pcohes01:q46_check4,
+       -(any_of(FreeTextItems))) |> #names()
+ # select(all_of(mis_items_w1), Interviewmode) |> 
+  group_by(Interviewmode) |> 
+  summarise(across(pcohes01:q46_check4, 
+                   ~ sum(.x %in% c(-1, -9), na.rm = TRUE) / n(), 
+                   .names = "PropMiss_{.col}")) |> 
+  pivot_longer(-Interviewmode, names_to = c("dummy", "Variable"), 
+               names_pattern = "(PropMiss_)(.*)", values_to = "Prop") |> 
+  select(-dummy) |> 
+  mutate(Variable = factor(Variable, levels = rev(unique(Variable)))) |>  
+
+ggplot(aes(x = Variable, y = Prop, colour = Interviewmode, group = Interviewmode)) +
+  geom_point(size = 1) +
+  geom_line(linewidth = 0.8) +
+  scale_colour_manual(values = mode_palette) +
+  labs(
+    x = "Items",
+    y = "Nonresponse Rate (Proportion)",
+    colour = "Interviewmode",
+    title = "Nonresponse Rate by Item and Mode"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(size = 3, angle = 90, vjust = 0.5),
+    legend.position = "bottom"
+  )
+
+```
+
+
+
+
+```{r}
+#| label: build-item-nonresponse-w1
+#| eval: true
+
+mis_df_w1 <- 
+  w1p |> 
+  select(lfd, Interviewmode,
+         pcohes01:q46_check4,
+         -(any_of(FreeTextItems)),
+         all_of(problem.vars))
+
+
+
+  
+# w1 items with high nonresponse rates
+
+manymissings_CAWI <- mis_df_w1 |> filter(Interviewmode == "CAWI") |>
+  summarise_all(~sum(.  %in% c(-1, -9))) |> 
+  pivot_longer(
+    everything(), names_to = "Variable", values_to = "Numb.missings") |> 
+  rowwise() |> 
+  mutate(Prop.missings = Numb.missings/(mis_df_w1 |> filter(Interviewmode == "CAWI") |> nrow())) |> 
+  ungroup() |> 
+  arrange(desc(Prop.missings)) |> 
+  filter(Prop.missings > .15) |> pull(Variable) #|> paste(collapse = '", "')
+
+manymissings_PAPI <- mis_df_w1 |> filter(Interviewmode == "PAPI") |> 
+  summarise_all(~sum(.  %in% c(-1, -9))) |> 
+  pivot_longer(
+    everything(), names_to = "Variable", values_to = "Numb.missings") |> 
+  rowwise() |> 
+  mutate(Prop.missings = Numb.missings/(mis_df_w1 |> filter(Interviewmode == "PAPI") |> nrow())) |> 
+  ungroup() |> 
+  arrange(desc(Prop.missings)) |> 
+  filter(Prop.missings > .15) |> pull(Variable) #|> paste(collapse = '", "')
+
+
+
+
+list(
+  CAWI_only = setdiff(manymissings_CAWI, manymissings_PAPI),
+  PAPI_only = setdiff(manymissings_PAPI, manymissings_CAWI)
+)
+
+	
+
+# variables excluded from the item nonresponse counts:
+
+exclusion_items <- unique(c(manymissings_CAWI, manymissings_PAPI, problem.vars)) #95 items 
+
+mis_items_w1 <- 
+  mis_df_w1 |> 
+  select(
+    
+    -c(lfd, Interviewmode, #qmethod,
+       contains("interview"),
+       contains("Nonresp"),
+       
+       all_of(exclusion_items))) |> 
+  colnames()
+
+
+
+
+mis_df_w1 <- 
+  mis_df_w1 |> 
+  rowwise() |> 
+  mutate(
+  Nonresponses = sum(across(all_of(mis_items_w1)) %in% c(-1, -9), na.rm = TRUE),
+  N_allNonrespOpportunities_woBO = sum(across(all_of(mis_items_w1), ~!. %in% c(-2, -10)), na.rm = TRUE),
+ # BO (-10) counted as "not shown", i.e., not a missed opportunity"
+  NonrespRatio = Nonresponses/N_allNonrespOpportunities_woBO) |> 
+  ungroup()
+
+mis_df_w1 |> pull(N_allNonrespOpportunities_woBO) |> summary()
+#    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#     2.0   130.0   133.0   131.8   136.0   143.0 
+
+
+w1p <- 
+   w1p |> 
+   left_join(mis_df_w1 |>
+               select(lfd, NonrespRatio), by = "lfd")
+```
+
+
+```{r}
+mis_df_w1 |> filter(Interviewmode == "PAPI") |>
+  summarise_all(~sum(.  %in% c(-1, -9))) |> 
+  pivot_longer(
+    everything(), names_to = "Variable", values_to = "Numb.missings") |> 
+  rowwise() |> 
+  mutate(Prop.missings = Numb.missings/(mis_df_w1 |> filter(Interviewmode == "PAPI") |> nrow())) |> 
+  ungroup() |> 
+  arrange(desc(Prop.missings)) |> 
+  filter(Prop.missings > .15)
+```
+
+## w1 Extreme/Middle
+
+- 8 items with 5 level likert scales
+- 8 items with 11 level likert scales
+
+
+
+For comparison of extreme vs. middle response distributions by interviewmode see @fig-extrmintmodevioline 
+
+
+```{r}
+#| label: w1-Extreme-and-middle-items
+#| eval: true
+
+
+
+
+
+
+extrm5_items <- 
+  w1p |> select(
+    
+    # 36 shared with `Nondiff`
+    pcohes01:pcohes12,
+    pfamexp01:pfamexp06,
+    pworkexp01:pworkexp06,
+    pneighexp01:pneighexp06,
+    punivtrad01:punivtrad06,
+    ppopul01:ppopul09,
+
+    
+    # 16    
+    pcov01:pcov04, #5
+    pdemocfit, #5
+    pclimsor, #5
+    pclimcon,  #5
+    preldepriv #5
+    
+  ) |> colnames() #n = 53
+
+extrm11_items <- 
+  w1p |> select(
+    
+    # 28 shared with `Nondiff`
+    pinsttrust01:pinsttrust11,
+    pgrpsymp01:pgrpsymp17,
+    
+    plifeuse, #11
+    plifesat, #11
+    ppolatt,  #11
+    pcovmeas, #11 
+    pcovlim,   #11
+    pgentrust, #11
+    
+    pdemocsat, #11
+    
+    pladder01 #11
+   
+  ) |> colnames() #n = 36
+
+
+extrm7_items <- 
+  w1p |> select(
+    # 17 shared with `Nondiff`
+    pgrpknow01:pgrpknow17
+  ) |> colnames() #n = 17
+
+
+t1 <- Sys.time()
+
+
+w1p <- 
+  w1p |>
+  rowwise() |>
+  mutate(
+    
+    # all extreme values on 5-likert
+    E5 = sum(across(all_of(extrm5_items)) %in% c(1, 5), na.rm = TRUE),
+    # all middle values on 5-likert
+    M5 = sum(across(all_of(extrm5_items)) == 3, na.rm = TRUE),
+    
+    # all extreme and middle values on 5-likert
+    EM.S5 = sum(E5, M5, na.rm = TRUE),
+    
+    
+     # all extreme values on 7-likert
+    E7 = sum(across(all_of(extrm7_items)) %in% c(1, 6), na.rm = TRUE),
+    # all middle values on 7-likert
+    M7 = sum(across(all_of(extrm7_items)) %in% c(7), na.rm = TRUE), # 7: "Don't know"
+    
+    # all extreme and middle values on 7-likert
+    EM.S7 = sum(E7, M7, na.rm = TRUE),
+     
+    
+    # all extreme values on 11-likert
+    E11 = sum(across(all_of(extrm11_items)) %in% c(0, 10), na.rm = TRUE),
+    # all middle values on 11-likert
+    M11 = sum(across(all_of(extrm11_items)) %in% c(5), na.rm = TRUE),
+    
+    # all extreme and middle values on 11-likert
+    EM.S11 = sum(E11, M11, na.rm = TRUE),
+    
+    
+    
+    N5_all = sum(across(all_of(extrm5_items)) > 0, na.rm = TRUE),
+    N7_all = sum(across(all_of(extrm7_items)) > 0, na.rm = TRUE),
+    N11_all = sum(across(all_of(extrm11_items)) >= 0, na.rm = TRUE),
+      
+   
+    
+    # all extreme values
+    E.S5S7S11 = sum(E5, E7, E11, na.rm = TRUE),
+    # all middle values
+    M.S5S7S11 = sum(M5, M7, M11, na.rm = TRUE),
+    
+    # all items responded 
+    N_allExMidOpportunities = sum(N5_all, N7_all, N11_all),
+    
+    
+    
+    Ratio_Extr = ifelse(N_allExMidOpportunities == 0, NA, E.S5S7S11/N_allExMidOpportunities),
+    Ratio_Mid = ifelse(N_allExMidOpportunities == 0, NA, M.S5S7S11/N_allExMidOpportunities),
+    
+    RatioExMid = sum(E.S5S7S11, M.S5S7S11, na.rm = TRUE)/N_allExMidOpportunities
+    
+  ) |> ungroup()
+
+print(paste("Total duration (Extreme/Middle, mins):", as.numeric(Sys.time()-t1, "mins")))
+
+cor.test(w1p$Ratio_Mid, w1p$Ratio_Extr) #-0.3700904, t = -51.83, df = 16927, p-value < 2.2e-16
+
+
+
+#
+
+
+```
+
+
+
+
+```{r}
+#| label: fig-extrmintmodevioline
+#| fig-cap: Share of all extreme/middle responses by all responses given - comparison by Interviewmode
+#| fig-cap-location: top
+#| include: true
+#| eval: true
+#| fig-height: 5
+#| fig-show: hold
+
+
+
+  w1p |> select(lfd, Interviewmode, Ratio_Extr, Ratio_Mid, RatioExMid) |> 
+  pivot_longer(cols = 3:5) |> 
+  
+  ggplot(aes(Interviewmode, value, color = Interviewmode, group = Interviewmode)) +
+  
+  geom_violin(scale = "count", linewidth = 0.8, alpha = .9) +
+  
+  geom_boxplot(width = 0.15, color = "black", aes(fill = Interviewmode)) +
+  
+  scale_fill_manual(values = mode_palette) +
+  scale_color_manual(values = mode_palette) +
+   labs(caption = "Share of extreme/middle responses by all responses given - comparison by Interviewmode",
+        x = "", 
+        y = "Ratio extreme/middle by all responses",
+        fill = "Interviewmode") +
+  facet_wrap(~ factor(name, c("Ratio_Extr", "Ratio_Mid", "RatioExMid")), ncol = 5) +
+  
+   guides(color = "none") +
+   
+ 
+  papaja::theme_apa() +
+  
+  theme(axis.text.x = element_blank(), #element_text(size = 9, angle = 15),
+        axis.ticks.x = element_blank(),
+        axis.line.x = element_blank(),
+        legend.position="bottom",
+        strip.text.x = element_text(size = 9, face = "bold"),
+        panel.grid.major.y = element_line(color = "grey", linewidth = 0.01),
+        panel.grid.minor.y = element_line(color = "grey", linewidth = 0.01))
+
+
+ 
+
+
+```
+
+
+
+- Participants in the category "Above-average" had answered on average 64.5% of the considered questions using the extreme or middle category (SD = 0.08).
+
+## Categorize `Extr` & `Mid`
+
+
+```{r}
+#| label: w1-categorize-RatioExtreme-and-Mid
+#| eval: true
+
+
+thresholds_ExM_sensan <- 
+  w1p |> 
+  
+  group_by(Interviewmode) |>
+  summarise(
+    thresh_Extr_Ratio = mean(Ratio_Extr, na.rm = TRUE) + sd(Ratio_Extr, na.rm = TRUE),
+    thresh_Mid_Ratio = mean(Ratio_Mid, na.rm = TRUE) + sd(Ratio_Mid, na.rm = TRUE),
+    
+    percentile_Extr = mean(Ratio_Extr <= thresh_Extr_Ratio, na.rm = TRUE) * 100,
+    percentile_Mid = mean(Ratio_Mid <= thresh_Mid_Ratio, na.rm = TRUE) * 100,
+    
+    prop_above_Extr = mean(Ratio_Extr > thresh_Extr_Ratio, na.rm = TRUE) * 100,
+    prop_above_Mid = mean(Ratio_Mid > thresh_Mid_Ratio, na.rm = TRUE) * 100
+  )
+
+
+
+
+thresholds_ExM_Sample <- 
+  w1p |> 
+  filter(Sample == "Sample") |> 
+  group_by(Interviewmode) |>
+  summarise(
+    thresh_Extr_Ratio = mean(Ratio_Extr, na.rm = TRUE) + sd(Ratio_Extr, na.rm = TRUE),
+    thresh_Mid_Ratio = mean(Ratio_Mid, na.rm = TRUE) + sd(Ratio_Mid, na.rm = TRUE),
+    
+    percentile_Extr = mean(Ratio_Extr <= thresh_Extr_Ratio, na.rm = TRUE) * 100,
+    percentile_Mid = mean(Ratio_Mid <= thresh_Mid_Ratio, na.rm = TRUE) * 100,
+    
+    prop_above_Extr = mean(Ratio_Extr > thresh_Extr_Ratio, na.rm = TRUE) * 100,
+    prop_above_Mid = mean(Ratio_Mid > thresh_Mid_Ratio, na.rm = TRUE) * 100
+  )
+
+
+
+w1p <- 
+  w1p |> 
+  mutate(Extr_sensan = 
+           case_when(
+             is.na(Ratio_Extr) ~ "Not applicable",
+             Interviewmode == "PAPI" & Ratio_Extr > thresholds_ExM_sensan |> filter(Interviewmode == "PAPI") |> pull(thresh_Extr_Ratio) ~ "High",
+             Interviewmode == "CAWI" & Ratio_Extr > thresholds_ExM_sensan |> filter(Interviewmode == "CAWI") |> pull(thresh_Extr_Ratio) ~ "High",
+             TRUE ~ "Not high"),
+         Extr_sensan = factor(Extr_sensan, levels = c("Not high", "High", "Not applicable")),
+         Mid_sensan = 
+           case_when(
+             is.na(Ratio_Mid) ~ "Not applicable",
+             Interviewmode == "PAPI" & Ratio_Mid > thresholds_ExM_sensan |> filter(Interviewmode == "PAPI") |> pull(thresh_Mid_Ratio) ~ "High",
+             Interviewmode == "CAWI" & Ratio_Mid > thresholds_ExM_sensan |> filter(Interviewmode == "CAWI") |> pull(thresh_Mid_Ratio) ~ "High",
+             TRUE ~ "Not high"),
+         
+         Mid_sensan = factor(Mid_sensan, levels = c("Not high", "High", "Not applicable")))
+
+
+w1p <- 
+  w1p |> 
+  mutate(Extr_Sample = 
+           case_when(
+             Sample == "sensan" ~NA, 
+             is.na(Ratio_Extr) ~ "Not applicable",
+             Interviewmode == "PAPI" & Ratio_Extr > thresholds_ExM_Sample |> filter(Interviewmode == "PAPI") |> pull(thresh_Extr_Ratio) ~ "High",
+             Interviewmode == "CAWI" & Ratio_Extr > thresholds_ExM_Sample |> filter(Interviewmode == "CAWI") |> pull(thresh_Extr_Ratio) ~ "High",
+             TRUE ~ "Not high"),
+         Extr_Sample = factor(Extr_Sample, levels = c("Not high", "High", "Not applicable")),
+         
+         Mid_Sample = 
+           case_when(
+             Sample == "sensan" ~NA, 
+             is.na(Ratio_Mid) ~ "Not applicable",
+             Interviewmode == "PAPI" & Ratio_Mid > thresholds_ExM_Sample |> filter(Interviewmode == "PAPI") |> pull(thresh_Mid_Ratio) ~ "High",
+             Interviewmode == "CAWI" & Ratio_Mid > thresholds_ExM_Sample |> filter(Interviewmode == "CAWI") |> pull(thresh_Mid_Ratio) ~ "High",
+             TRUE ~ "Not high"),
+         Mid_Sample = factor(Mid_Sample, levels = c("Not high", "High", "Not applicable"))) |> 
+  select(lfd, Extr_Sample, Mid_Sample) |> 
+  right_join(w1p, by = "lfd")
+
+
+
+w1p |> filter(!(is.na(Extr_Sample) & is.na(Mid_Sample))) |> count(Extr_Sample, Mid_Sample)
+```
+
+
+## w1 `Nondifferentiation`
+### A) Sensitivity Analysis only
+
+
+```{r}
+#| label: calculate-nondiff-wave-1-sensan
+#| eval: true
+
+w1 <- w1p
+
+pcohes.items <- w1 |> select(pcohes01:pcohes12) |> colnames()
+pinsttrust.items <- w1 |> select(pinsttrust01:pinsttrust11) |> colnames()
+pfamexp.items <- w1 |> select(pfamexp01:pfamexp06) |> colnames()
+pworkexp.items <- w1 |> select(pworkexp01:pworkexp06) |> colnames()    # Category "Unemployed"
+pneighexp.items <- w1 |> select(pneighexp01:pneighexp06) |> colnames()
+punivtrad.items <- w1 |> select(punivtrad01:punivtrad06) |> colnames()
+pgrpsymp.items <- w1 |> select(pgrpsymp01:pgrpsymp17) |> colnames()
+pgrpknow.items <- w1 |> select(pgrpknow01:pgrpknow17) |> colnames()
+pfrspcons.items <- w1 |> select(pfrspcons01:pfrspcons07) |> colnames()
+ppopul.items <- w1 |> select(ppopul01:ppopul09) |> colnames()
+
+items_list <- list(pcohes.items, pinsttrust.items,
+                   pfamexp.items, pworkexp.items, 
+                   pneighexp.items, punivtrad.items, pgrpsymp.items, 
+                   pgrpknow.items, pfrspcons.items, ppopul.items)
+
+tND <- Sys.time()
+
+# extract all items from items_list
+all_items <- unlist(items_list)
+
+w1_papi <- 
+  w1 |> 
+  filter(Interviewmode == "PAPI") |> 
+  select(lfd, all_of(all_items)) |>  # select only the item columns
+  meanRootPairs(items_list) |> 
+  ungroup()
+
+w1_cawi  <- 
+  w1 |> 
+  filter(Interviewmode == "CAWI") |> 
+  select(lfd, all_of(all_items)) |> 
+   meanRootPairs(items_list) |> ungroup()
+
+
+# merge PAPI and CAWI
+w1_meanroot <- 
+  bind_rows(w1_papi, w1_cawi)
+
+# join onto the original w1 dataset
+w1 <- w1 |> 
+  left_join(w1_meanroot |> 
+              select(lfd, starts_with("temp_index"), starts_with("temp_max"), starts_with("MeanRootPairs_")), by = "lfd")
+
+
+#10.75397 minutes
+
+
+
+```
+
+
+```{r}
+#| eval: true
+#| label: fig-mrpsensan
+
+p_load(patchwork)
+
+
+# prepare the data for the WK variables (long format)
+wk_data <- w1 |>
+  select(lfd, Interviewmode, MeanRootPairs_pinsttrust, MeanRootPairs_pfrspcons, 
+         MeanRootPairs_ppopul, MeanRootPairs_pgrpsymp) |>
+  pivot_longer(c(MeanRootPairs_pinsttrust:MeanRootPairs_pgrpsymp), 
+               names_to = "variable", 
+               values_to = "mrp_value") |>
+  mutate(variable = case_when(
+    variable == "MeanRootPairs_pinsttrust" ~ "pinsttrust",
+    variable == "MeanRootPairs_pfrspcons" ~ "pfrspcons", 
+    variable == "MeanRootPairs_ppopul" ~ "ppopul",
+    variable == "MeanRootPairs_pgrpsymp" ~ "pgrpsymp",
+    TRUE ~ variable
+  ))
+
+# density plot with a different color per variable
+a <- ggplot(wk_data, aes(x = mrp_value, color = variable)) +
+  geom_density(alpha = 0.6) +  # density instead of points (better at N = 10k)
+  scale_color_manual(values = c("pinsttrust" = "#E31A1C", 
+                               "pfrspcons" = "#1F78B4", 
+                               "ppopul" = "#33A02C", 
+                               "pgrpsymp" = "#FF7F00")) +
+  facet_wrap(~Interviewmode) +
+  labs(title = "MRP Distribution: WEAK Straightlining Batteries (sensan)",
+       x = "Mean Root Pairs", 
+       y = "Density",
+       color = "Battery") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+
+
+# ST data, long format
+st_data <- w1 |>
+  select(lfd, Interviewmode, MeanRootPairs_pcohes, MeanRootPairs_pfamexp, 
+         MeanRootPairs_pworkexp, MeanRootPairs_pneighexp, 
+         MeanRootPairs_punivtrad, MeanRootPairs_pgrpknow) |>
+  pivot_longer(c(MeanRootPairs_pcohes:MeanRootPairs_pgrpknow), names_to = "variable", values_to = "mrp_value") |>
+  mutate(variable = case_when(
+    variable == "MeanRootPairs_pcohes" ~ "pcohes",
+    variable == "MeanRootPairs_pfamexp" ~ "pfamexp",
+    variable == "MeanRootPairs_pworkexp" ~ "pworkexp", 
+    variable == "MeanRootPairs_pneighexp" ~ "pneighexp",
+    variable == "MeanRootPairs_punivtrad" ~ "punivtrad",
+    variable == "MeanRootPairs_pgrpknow" ~ "pgrpknow"
+  ))
+
+#  density plot for ST
+b <- ggplot(st_data, aes(x = mrp_value, color = variable)) +
+  geom_density(alpha = 0.6) +
+  scale_color_manual(values = c("pcohes" = "#E31A1C", 
+                              "pfamexp" = "#1F78B4", 
+                              "pworkexp" = "#33A02C", 
+                              "pneighexp" = "#FF7F00", 
+                              "punivtrad" = "#6A3D9A", 
+                              "pgrpknow" = "#FDBF6F")) +
+  facet_wrap(~Interviewmode) +
+  labs(title = "MRP Distribution: STRONG Straightlining Batteries (sensan)",
+       x = "Mean Root Pairs", 
+       color = "Battery") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+
+```
+
+
+In Wave 1, anchor persons and household members were asked to respond to 52 questions. The question for panelconsent, the household panel (only for anker persons) and the questions for the device used followed (CAWI only). 
+From question number 34, all questions were demography. The only exception made question number 47 (psunvote).
+
+
+We calculated the level on nondifferentiations for a variety of questions that were presented in the form of 10 item grids from the whole survey namely questions 1, 14, 23, 24, 25, 26, 27, 28, 30 and 31.
+The scales include a total of 97 items.
+
+
+
+
+```{r}
+#| label: fig-correlationsNDw1
+#| fig-cap: Correlations of Nondifferentiation Items 
+#| eval: true
+#| include: true
+#| fig-height: 9
+#| fig-width: 9
+#| fig-show: hold
+
+
+chart.Correlation(w1 |> select(contains("MeanRootPairs")), histogram = TRUE)
+
+```
+
+### w1 Nd SEM using CT-C(M − 1) Model
+
+
+
+- Ideally, the latent scores would be used. However, they can only be estimated for records with complete MeanRootPairs values, which would entail a very high amount of missingness.
+- We therefore use the manifest scores, aggregated as the mean across all MeanRootPairs values (=> almost no missingness), and then check the agreement between the two measures.
+- The latent scores correlate with the aggregated manifest scores at .86*** (WK) and .82*** (ST), respectively
+
+```{r}
+#| label: Wave-1-nd-latent-classes-sensan
+#| eval: true
+#| include: true
+
+p_load("lavaan", "tidySEM", "semPlot")
+
+
+# correlated traits: WK (weak) and ST (strong)
+# correlated methods-1: Reference-scale: 11-likert
+
+w1LatND_mod <- "
+
+#NondiffWeak
+WK =~
+MeanRootPairs_pinsttrust + MeanRootPairs_pfrspcons + MeanRootPairs_ppopul + MeanRootPairs_pgrpsymp 
+
+#NonidffStrong
+ST =~ 
+MeanRootPairs_pcohes + MeanRootPairs_pfamexp + MeanRootPairs_pworkexp + MeanRootPairs_pneighexp + MeanRootPairs_punivtrad + MeanRootPairs_pgrpknow
+
+#grids with scales with less-than-11-point-likert scales 
+u11_sensan =~ 
+MeanRootPairs_pcohes + MeanRootPairs_pfamexp + MeanRootPairs_pworkexp + MeanRootPairs_pneighexp + MeanRootPairs_punivtrad + MeanRootPairs_ppopul + MeanRootPairs_pfrspcons + MeanRootPairs_pgrpknow 
+
+WK ~~ 0 * u11_sensan
+ST ~~ 0 * u11_sensan
+
+"
+
+# simple model without groups
+w1LatND_fit_sensan <- sem(w1LatND_mod, w1, meanstructure = TRUE)
+summary(w1LatND_fit_sensan, fit = TRUE)
+
+fscores <- lavPredict(w1LatND_fit_sensan)  # matrix, not a list
+idx     <- lavInspect(w1LatND_fit_sensan, "case.idx")  # single vector
+
+# merge the scores back in, following the lavaan documentation for single-group models:
+for (fs in colnames(fscores)) {
+  w1[idx, fs] <- fscores[, fs]
+}
+
+# rename to wave suffix (latent scores WK/ST are not carried on)
+w1 <- 
+  w1 |> 
+  rename_with(
+    ~ str_c(., "_sensan"),
+    starts_with("MeanRootPairs_"),
+    c(WK, ST)
+  ) |> select(-starts_with("temp_"), -u11_sensan)
+
+w1 |> names()
+
+```
+
+
+```{r}
+#| label: calculate-nondiff-wave-1-Sample
+#| eval: true
+
+w1s <- w1 |> filter(Sample == "Sample") |> select(c("lfd", "Extr_Sample":"Mid_sensan"))
+
+pcohes.items <- w1s|> select(pcohes01:pcohes12) |> colnames()
+pinsttrust.items <- w1s|> select(pinsttrust01:pinsttrust11) |> colnames()
+pfamexp.items <- w1s|> select(pfamexp01:pfamexp06) |> colnames()
+pworkexp.items <- w1s|> select(pworkexp01:pworkexp06) |> colnames()    # Category "Unemployed"
+pneighexp.items <- w1s|> select(pneighexp01:pneighexp06) |> colnames()
+punivtrad.items <- w1s|> select(punivtrad01:punivtrad06) |> colnames()
+pgrpsymp.items <- w1s|> select(pgrpsymp01:pgrpsymp17) |> colnames()
+pgrpknow.items <- w1s|> select(pgrpknow01:pgrpknow17) |> colnames()
+pfrspcons.items <- w1s|> select(pfrspcons01:pfrspcons07) |> colnames()
+ppopul.items <- w1s|> select(ppopul01:ppopul09) |> colnames()
+
+items_list <- list(pcohes.items, pinsttrust.items,
+                   pfamexp.items, pworkexp.items, 
+                   pneighexp.items, punivtrad.items, pgrpsymp.items, 
+                   pgrpknow.items, pfrspcons.items, ppopul.items)
+
+tND <- Sys.time()
+
+# extract all items from items_list
+all_items <- unlist(items_list)
+
+w1s_papi <- 
+  w1s|> 
+  filter(Interviewmode == "PAPI") |> 
+  select(lfd, all_of(all_items)) |>  # select only the item columns
+  meanRootPairs(items_list) |> 
+  ungroup()
+
+w1s_cawi  <- 
+  w1s|> 
+  filter(Interviewmode == "CAWI") |> 
+  select(lfd, all_of(all_items)) |> 
+   meanRootPairs(items_list) |> ungroup()
+
+
+# merge PAPI and CAWI
+w1s_meanroot <- bind_rows(w1s_papi, w1s_cawi) |> select(lfd, starts_with("temp_"), starts_with("MeanRoot"))
+
+# join onto the original w1s dataset
+w1s<- w1s|> 
+  left_join(w1s_meanroot, by = "lfd")
+
+```
+
+```{r}
+#| eval: true
+#| label: fig-mrpSample
+
+
+
+# prepare the data for the WK variables (long format)
+wk_datas <- w1s |>
+  select(lfd, Interviewmode, MeanRootPairs_pinsttrust, MeanRootPairs_pfrspcons, 
+         MeanRootPairs_ppopul, MeanRootPairs_pgrpsymp) |>
+  pivot_longer(c(MeanRootPairs_pinsttrust:MeanRootPairs_pgrpsymp), 
+               names_to = "variable", 
+               values_to = "mrp_value") |>
+  mutate(variable = case_when(
+    variable == "MeanRootPairs_pinsttrust" ~ "pinsttrust",
+    variable == "MeanRootPairs_pfrspcons" ~ "pfrspcons", 
+    variable == "MeanRootPairs_ppopul" ~ "ppopul",
+    variable == "MeanRootPairs_pgrpsymp" ~ "pgrpsymp",
+    TRUE ~ variable
+  ))
+
+# density plot with a different color per variable
+a <- ggplot(wk_datas, aes(x = mrp_value, color = variable)) +
+  geom_density(alpha = 0.6) +  # density instead of points (better at N = 10k)
+  scale_color_manual(values = c("pinsttrust" = "#E31A1C", 
+                               "pfrspcons" = "#1F78B4", 
+                               "ppopul" = "#33A02C", 
+                               "pgrpsymp" = "#FF7F00")) +
+  facet_wrap(~Interviewmode) +
+  labs(title = "MRP Distribution: WEAK Straightlining Batteries (Analysis Sample)",
+       x = "Mean Root Pairs", 
+       y = "Density",
+       color = "Battery") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+
+
+# ST data, long format
+st_datas <- w1s |>
+  select(lfd, Interviewmode, MeanRootPairs_pcohes, MeanRootPairs_pfamexp, 
+         MeanRootPairs_pworkexp, MeanRootPairs_pneighexp, 
+         MeanRootPairs_punivtrad, MeanRootPairs_pgrpknow) |>
+  pivot_longer(c(MeanRootPairs_pcohes:MeanRootPairs_pgrpknow), names_to = "variable", values_to = "mrp_value") |>
+  mutate(variable = case_when(
+    variable == "MeanRootPairs_pcohes" ~ "pcohes",
+    variable == "MeanRootPairs_pfamexp" ~ "pfamexp",
+    variable == "MeanRootPairs_pworkexp" ~ "pworkexp", 
+    variable == "MeanRootPairs_pneighexp" ~ "pneighexp",
+    variable == "MeanRootPairs_punivtrad" ~ "punivtrad",
+    variable == "MeanRootPairs_pgrpknow" ~ "pgrpknow"
+  ))
+
+#  density plot for ST
+b <- ggplot(st_datas, aes(x = mrp_value, color = variable)) +
+  geom_density(alpha = 0.6) +
+  scale_color_manual(values = c("pcohes" = "#E31A1C", 
+                              "pfamexp" = "#1F78B4", 
+                              "pworkexp" = "#33A02C", 
+                              "pneighexp" = "#FF7F00", 
+                              "punivtrad" = "#6A3D9A", 
+                              "pgrpknow" = "#FDBF6F")) +
+  facet_wrap(~Interviewmode) +
+  labs(title = "MRP Distribution: STRONG Straightlining Batteries (Analysis Sample)",
+       x = "Mean Root Pairs", 
+       color = "Battery") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+
+```
+
+
+
+```{r}
+#| label: fig-correlationsNDsensan
+#| fig-cap: Correlations of Nondifferentiation Items (Sample)
+#| eval: true
+#| include: true
+#| fig-height: 9
+#| fig-width: 9
+#| fig-show: hold
+
+
+chart.Correlation(w1s |> select(contains("MeanRootPairs")), histogram = TRUE)
+
+```
+
+
+
+### w1 Nd SEM using CT-C(M − 1) Model (analysis sample)
+
+```{r}
+#| label: Wave-1-nd-latent-classes-Sample
+#| eval: true
+#| include: true
+
+
+
+# correlated traits: WK (weak) and ST (strong)
+# correlated methods-1: Reference-scale: 11-likert
+
+w1sLatND_mod <- "
+
+#NondiffWeak
+WK =~
+MeanRootPairs_pinsttrust + MeanRootPairs_pfrspcons + MeanRootPairs_ppopul + MeanRootPairs_pgrpsymp 
+
+#NonidffStrong
+ST =~ 
+MeanRootPairs_pcohes + MeanRootPairs_pfamexp + MeanRootPairs_pworkexp + MeanRootPairs_pneighexp + MeanRootPairs_punivtrad + MeanRootPairs_pgrpknow
+
+#grids with scales with less-than-11-point-likert scales 
+u11 =~ 
+MeanRootPairs_pcohes + MeanRootPairs_pfamexp + MeanRootPairs_pworkexp + MeanRootPairs_pneighexp + MeanRootPairs_punivtrad + MeanRootPairs_ppopul + MeanRootPairs_pfrspcons + MeanRootPairs_pgrpknow 
+
+WK ~~ 0 * u11
+ST ~~ 0 * u11
+
+"
+
+# simple model without groups
+w1sLatND_fit <- sem(w1sLatND_mod, w1s, meanstructure = TRUE)
+summary(w1sLatND_fit, fit = TRUE)
+fscores <- lavPredict(w1sLatND_fit)  # matrix, not a list
+idx     <- lavInspect(w1sLatND_fit, "case.idx")  # single vector
+
+# merge the scores back in, following the lavaan documentation for single-group models:
+for (fs in colnames(fscores)) {
+  w1s[idx, fs] <- fscores[, fs]
+}
+
+# 
+# 
+```
+
+
+```{r}
+# model used as the basis for the coefficient table
+SEM_w1 <- table_results(w1sLatND_fit)|>
+    mutate(label = label |>
+               str_replace("MeanRootPairs_", "Mrp.") |>
+               str_replace("=~", ".BY.") |>
+               str_replace("~~", ".WITH.") |>
+               str_replace("~1", "") |>
+               str_replace("^\\.", "Means.")) |>
+  filter(!str_starts(label, "Variances"),
+         !str_starts(label, "Means")) |> 
+  select(label, est_sig, se, confint) 
+
+
+SEM_w1|> 
+  kable(
+    format = "latex",
+    booktabs = TRUE,
+    col.names = c("Label",
+                  "Est.", "SE", "95\\% CI"),
+    escape = FALSE
+  ) 
+```
+
+
+```{r}
+#| label: fig-W11NdBoxplotsIntmodeSample
+#| fig-cap: Wave 1 Nondifferentiation by Interviewmode. 
+#| eval: true
+#| include: true
+#| fig-height: 15
+#| fig-show: hold
+
+  w1s |> 
+  select(lfd, Interviewmode, 
+        
+         "Q1: pcohes\n12 items, 5-likert, multi" = MeanRootPairs_pcohes, 
+         "Q14: pinsttrust\n11 items, 11-likert, uni" = MeanRootPairs_pinsttrust, 
+         "Q23: pfamexp\n6 items, 5-likert, multi" = MeanRootPairs_pfamexp, 
+         "Q24: pworkexp\n6 items, 5-likert, multi" = MeanRootPairs_pworkexp, 
+         "Q25: pneighexp\n6 items, 5-likert, multi" = MeanRootPairs_pneighexp, 
+         "Q26: punivtrad\n6 items, 5-likert, multi" = MeanRootPairs_punivtrad, 
+         "Q27: pgrpsymp\n17 items, 11-likert, uni" = MeanRootPairs_pgrpsymp, 
+         "Q28: pgrpknow\n17 items, 7-likert, multi" = MeanRootPairs_pgrpknow, 
+         "Q30: pfrspcons\n7 items, 4-likert, uni" = MeanRootPairs_pfrspcons, 
+         "Q31: ppopul\n9 items, 5-likert, uni" = MeanRootPairs_ppopul
+
+         ) |> 
+  
+  # long format
+  pivot_longer(cols = 3:12) |>
+  
+  
+  
+  ggplot(aes(Interviewmode, value, color = Interviewmode, group = Interviewmode)) +
+  
+  geom_violin(scale = "count", linewidth = 0.8) +
+  
+  geom_boxplot(width = 0.15, color = "black", aes(fill = Interviewmode)) +
+  
+  scale_fill_manual(values = mode_palette) +
+  scale_color_manual(values = mode_palette) +
+   labs(caption = "Wave 1: Nondifferentiation (Mean Root of Pairs) by Interviewmode (Analysis Sample)",
+        x = "", 
+        y = "Nondifferentiation (mean root of pairs)",
+        fill = "Interviewmode") +
+  
+  
+  facet_wrap(~ factor(name, c(
+  
+    "Q1: pcohes\n12 items, 5-likert, multi", 
+    "Q14: pinsttrust\n11 items, 11-likert, uni", 
+    "Q23: pfamexp\n6 items, 5-likert, multi", 
+    "Q24: pworkexp\n6 items, 5-likert, multi", 
+    "Q25: pneighexp\n6 items, 5-likert, multi", 
+    "Q26: punivtrad\n6 items, 5-likert, multi", 
+    "Q27: pgrpsymp\n17 items, 11-likert, uni", 
+    "Q28: pgrpknow\n17 items, 7-likert, multi", 
+    "Q30: pfrspcons\n7 items, 4-likert, uni", 
+    "Q31: ppopul\n9 items, 5-likert, uni")), ncol = 5) +
+  
+   guides(color = "none") +
+   
+ 
+  papaja::theme_apa() +
+  
+  theme(axis.text.x = element_blank(), 
+        axis.text.y = element_text(size = 10),
+        axis.ticks.x = element_blank(),
+        axis.title.y = element_text(size = 14),
+        axis.line.x = element_blank(),
+        legend.position="bottom",
+        strip.text.x = element_text(size = 12, face = "bold"),
+        panel.grid.major.y = element_line(color = "#404040", linewidth = 0.02),
+        panel.grid.minor.y = element_line(color = "#404040", linewidth = 0.02),
+        plot.caption = element_text(size = 14))
+  
+
+
+
+
+
+
+
+
+
+
+```
+
+```{r}
+#| label: fig-W11NdBoxplotsSample
+#| fig-cap: Wave 1 Nondifferentiation (Analysis Sample Only)
+#| eval: true
+#| include: true
+#| fig-height: 15
+#| fig-show: hold
+
+
+
+
+  w1s |> 
+  select(lfd, 
+         "Q1: pcohes\n12 items, 5-likert, multi" = MeanRootPairs_pcohes, 
+         "Q14: pinsttrust\n11 items, 11-likert, uni" = MeanRootPairs_pinsttrust, 
+         "Q23: pfamexp\n6 items, 5-likert, multi" = MeanRootPairs_pfamexp, 
+         "Q24: pworkexp\n6 items, 5-likert, multi" = MeanRootPairs_pworkexp, 
+         "Q25: pneighexp\n6 items, 5-likert, multi" = MeanRootPairs_pneighexp, 
+         "Q26: punivtrad\n6 items, 5-likert, multi" = MeanRootPairs_punivtrad, 
+         "Q27: pgrpsymp\n17 items, 11-likert, uni" = MeanRootPairs_pgrpsymp, 
+         "Q28: pgrpknow\n17 items, 7-likert, multi" = MeanRootPairs_pgrpknow, 
+         "Q30: pfrspcons\n7 items, 4-likert, uni" = MeanRootPairs_pfrspcons, 
+         "Q31: ppopul\n9 items, 5-likert, uni" = MeanRootPairs_ppopul
+
+         ) |> 
+  
+  # long format
+  pivot_longer(cols = 2:11) |> #slice(0) |> glimpse()
+  
+  
+  
+  ggplot(aes(name, value)) +
+  
+  geom_violin(scale = "count", linewidth = 0.8) +
+
+  geom_boxplot(width = 0.15, color = "black") +
+  
+ 
+   labs(caption = "Wave 1: Nondifferentiation (Mean Root of Pairs)",
+        x = "",
+        y = "Mean root of pairs") +
+      
+  papaja::theme_apa() +
+   
+  theme(axis.text.x = element_text(angle = 90), 
+        axis.text.y = element_text(size = 10),
+        #axis.ticks.x = element_blank(),
+        axis.title.y = element_text(size = 14),
+        axis.line.x = element_blank(),
+        panel.grid.major.y = element_line(color = "#404040", linewidth = 0.02),
+        panel.grid.minor.y = element_line(color = "#404040", linewidth = 0.02),
+        plot.caption = element_text(size = 14))
+  
+  
+
+
+
+
+```
+
+
+```{r}
+#| label: rename-vars-specific-to-Sample
+#| eval: true
+
+w1s <- 
+  w1s |> 
+  rename_with(
+    ~ str_c(., "_Sample"),
+      starts_with("MeanRootPairs_") |
+      c(WK, ST)
+      
+  ) |> select(-
+     starts_with("temp_")) 
+
+w1s |> names()
+
+w1 <- 
+  w1 |> 
+  left_join(w1s |> select(lfd,
+                            starts_with("MeanRootPairs"),
+                            starts_with("WK_"),
+                            starts_with("ST_")
+                            ), by = "lfd") 
+```
+
+
+
+
+
+
+
+
+
+# Wave 2
+
+```{r}
+#| label: w2-sample-definition
+#| eval: true
+w2p_bo |> nrow()
+
+
+w2_lfds <-  #8900
+  w1 |> filter(Sample == "Sample") |> 
+  inner_join(w2p_bo, by = "lfd") |> 
+  select(lfd)
+
+w2 <- 
+  w2_lfds |> 
+  inner_join(w2p_bo, by = "lfd")
+w2 |> nrow()
+
+
+
+```
+
+
+
+
+# w2 Build `BreakOff`
+
+
+```{r}
+#| label: build-breakoff
+#| eval: true
+
+w2 <- 
+  w2 |> 
+  mutate(BreakOff = case_when(
+    intvollst %in% c(2,3) ~ "Break-off",
+    qmethod == 3 ~ "PAPI",              #PAPI
+    (qmethod == 4 & intvollst == 1) ~ "No Break-off"
+  ),
+    BreakOff = factor(BreakOff, levels = c("No Break-off", "Break-off", "PAPI"))) 
+
+frq(w2$BreakOff)
+# 65 cases
+```
+
+
+# w2 Build `Speeding`
+See fig-w1p2Speedingcategorization
+
+```{r}
+#| label: fig-w1p2Speedingcategorization
+#| fig-show: hold
+#| fig-cap: Speeding at w2
+#| include: true
+#| eval: true
+#| fig-height: 4
+
+
+
+
+w2 |> 
+  filter(qmethod == 4) |> 
+  select(lfd, BreakOff, interviewdauer) |> 
+  #left_join(w2_dur, by = "lfd") |> 
+  left_join(w1 |> select(lfd, Age_cat = Age_cat_Sample), by = "lfd") |> 
+  
+  #select(-plifesat03_dur, -plifesat04_dur, -plifesat10_dur, -contains("prelfund")) |> 
+
+
+  mutate(
+   
+
+    # not include into calculation of quantile borders: N = 54 Break-off cases
+    # not include into calculation of quantile borders: N = 54 Break-off cases
+  interviewdauer = case_when(BreakOff == "Break-off" ~ NA, 
+                             TRUE ~ interviewdauer)) |> 
+  
+  group_by(Age_cat) |> 
+
+
+  summarise(
+    `1` = quantile(interviewdauer, probs = 0.01, na.rm = TRUE),
+    `3` = quantile(interviewdauer, probs = 0.03, na.rm = TRUE),
+    `5` = quantile(interviewdauer, probs = 0.05, na.rm = TRUE),
+    `10` = quantile(interviewdauer, probs = 0.1, na.rm = TRUE),
+    `15` = quantile(interviewdauer, probs = 0.15, na.rm = TRUE),
+    `20` = quantile(interviewdauer, probs = 0.2, na.rm = TRUE),
+    `25` = quantile(interviewdauer, probs = 0.25, na.rm = TRUE),
+    `33` = quantile(interviewdauer, probs = 0.33, na.rm = TRUE),
+    `50` = quantile(interviewdauer, probs = 0.5, na.rm = TRUE),
+    `66` = quantile(interviewdauer, probs = 0.66, na.rm = TRUE), 
+    `70` = quantile(interviewdauer, probs = 0.7, na.rm = TRUE),
+    `75` = quantile(interviewdauer, probs = 0.75, na.rm = TRUE),
+    `80` = quantile(interviewdauer, probs = 0.80, na.rm = TRUE),
+    `85` = quantile(interviewdauer, probs = 0.85, na.rm = TRUE),
+    `95` = quantile(interviewdauer, probs = 0.95, na.rm = TRUE)
+  ) |>
+  gather(key = "Quantile", value = "Value", -Age_cat) |> 
+  mutate(Quantile = as.numeric(Quantile)) |> 
+  ggplot(aes(y = Quantile, 
+             x = Value, color = Age_cat)) +
+  geom_line() +
+  scale_y_continuous(breaks = seq(0,100, by = 5)) +
+  labs(x = "Interview duration", y = "Quantile",
+       title = "w2: Quantiles of interview duration per age group") +
+  papaja::theme_apa()
+  
+```
+
+```{r}
+#|label: w2-build-speeding-variable
+#|eval: true
+
+
+w2_dur <- 
+  w2_dur |> 
+  left_join(w1 |> select(lfd, Age_cat = Age_cat_Sample)) |>
+    #inner_join(w2_lfds, by = "lfd") |>
+  # Step 1: set 0 to NA in all item columns
+  mutate(across(ends_with("_dur"),
+           ~ if_else(.x == 0, NA_real_, .x))
+  )  |> 
+    
+    # -110 cases not in the analysis sample due to age inconsistency (100) or w1-only participation (10)
+    filter(!is.na(Age_cat)) |> 
+    
+    
+  group_by(Age_cat) |>
+  # Step 2: compute medians (0/NA excluded)
+  mutate(
+    across(ends_with("_dur"), 
+           list(md = ~median(.x, na.rm = TRUE)), 
+           .names = "{.col}_md")
+  ) |>
+  
+  # Step 3: speeding indicators (_s) with group-specific medians
+  mutate(
+    across(
+      .cols = ends_with("_dur"),
+      .fns = ~ case_when(
+        is.na(.x) ~ NA_real_,
+        .x < 0.4 * get(paste0(cur_column(), "_md")) ~ 1,
+        TRUE ~ 0
+      ),
+      .names = "{.col}_s"
+    )
+  ) |>
+  ungroup() |>
+  
+  # Step 4: sum scores
+  rowwise() |>
+  mutate(
+    
+    # number of items whose duration is < 0.4 * the item's median duration across all respondents in the same age group (can be 0 if the respondent did not speed on any item)
+    ItemsSpeeded = sum(c_across(ends_with("_s")), na.rm = TRUE),
+    TotalItems = sum(!is.na(c_across(ends_with("_s")))),
+    ProportionSpeeding = ItemsSpeeded / TotalItems)|>
+  ungroup() 
+
+
+
+w2_dur |>
+  select(ItemsSpeeded, TotalItems, ProportionSpeeding) |>
+  pivot_longer(everything(), names_to = "Variable", values_to = "Value") |>
+  ggplot(aes(x = Value)) +
+      geom_histogram(fill="#69b3a2", color="#e9ecef") +
+
+ # geom_density(fill = "steelblue", alpha = 0.5) +
+  facet_wrap(~Variable, scales = "free") +
+  theme_minimal() +
+  labs(title = "Distribution of Speeding Indicators (w2)")
+
+
+
+# Complete sample (sensitivity analysis only)
+w2_dur |> filter(ProportionSpeeding>0.000) |> nrow()
+w2_dur |> filter(ProportionSpeeding >0 & ProportionSpeeding<0.014286) |> pull(ItemsSpeeded) |> summary()  #1-3 Items - marginal
+
+# upper median range: 
+w2_dur |> filter(ProportionSpeeding>=0.014286) |> pull(ItemsSpeeded) |> summary()  #1-186 Items
+
+#### TOP 10 MOST SPEEDED ITEMS
+
+ # filter the _s columns
+ s_cols <- w2_dur |> 
+     select(ends_with("_s")) |> 
+     names()
+ 
+ # compute column sums (number of 1s, ignoring NAs)
+ w2_dur |> 
+     summarise(across(all_of(s_cols), ~ sum(.x == 1, na.rm = TRUE))) |> 
+     pivot_longer(everything(), names_to = "variable", values_to = "sum_1er") |> 
+     arrange(desc(sum_1er)) |> 
+   head(10)
+ 
+# variable  sum_1er
+# pdiscrimoth_dur_s	460			
+# pmotherocc01_dur_s	395			
+# plabinc_dur_s	385			
+# pmotherocc03_dur_s	341			
+# ppartytend_dur_s	315			
+# pdiscrim12_dur_s	277			
+# pfollow02_dur_s	270			
+# pinform02_dur_s	253			
+# pcovidcosts01_dur_s	244			
+# plifesat02_dur_s	225
+
+ 
+
+
+
+w2_dur |> 
+  #filter(Sample == "Sample") |> 
+  # with cutoff line
+ggplot(aes(x = ProportionSpeeding)) +
+  geom_density(alpha = 0.6, fill = "orange") +
+  geom_vline(xintercept = 0.014286, linetype = "dashed", color = "red", linewidth = 1) +
+  annotate("text", x = 0.014286, y = 0, label = "Cutoff = 0.014286", 
+           hjust = -0.1, vjust = -1, color = "red") +
+  labs(title = "Distribution of Proportion Speeding (w2)",
+       x = "Proportion Speeding", 
+       y = "Density") +
+  theme_minimal()
+
+
+ 
+ 
+# consistent threshold: mean + 1 SD per group
+ 
+thresholds_speeding_w2 <- 
+   w2_dur |>
+   group_by(Age_cat) |> 
+   summarise(
+     thresh_Speed = mean(ProportionSpeeding, na.rm = TRUE) + sd(ProportionSpeeding, na.rm = TRUE),
+     percentile_sp = mean(ProportionSpeeding <= thresh_Speed, na.rm = TRUE) * 100,
+     prop_above_sp = mean(ProportionSpeeding > thresh_Speed, na.rm = TRUE) * 100) |> ungroup()
+
+w2_dur <- 
+  w2_dur |> 
+  mutate(
+    Speeding = case_when(
+      is.na(ProportionSpeeding) ~NA,
+      Age_cat == "Age_T1[18.0-40.0]" & ProportionSpeeding > thresholds_speeding_w2 |> filter(Age_cat == "Age_T1[18.0-40.0]") |> pull(thresh_Speed) ~ "Speeding",
+      Age_cat == "Age_T2[40.0-60.0]" & ProportionSpeeding > thresholds_speeding_w2 |> filter(Age_cat == "Age_T2[40.0-60.0]") |> pull(thresh_Speed) ~ "Speeding",
+      Age_cat == "Age_T3[60.0-97.0]" & ProportionSpeeding > thresholds_speeding_w2 |> filter(Age_cat == "Age_T3[60.0-97.0]") |> pull(thresh_Speed) ~ "Speeding",
+      TRUE ~"No speeding"
+    ), 
+    Speeding = factor(Speeding, levels = c("No speeding", "Speeding"))
+  )
+
+ 
+ 
+ 
+ 
+
+# join to w2 
+w2 <- 
+  w2 |> 
+  left_join(
+    w2_dur |> select(lfd, ProportionSpeeding, Speeding), by = "lfd"
+  )
+```
+
+
+
+## w2 Build `Interviewmode`
+
+```{r}
+#| label: build-interviewmode-w2
+#| eval: true 
+w2 <- 
+  w2 |> 
+   mutate(
+    Interviewmode = case_when(
+      qmethod == 3 ~ "PAPI",
+      qmethod == 4 ~ "CAWI"
+    ),
+    Interviewmode = factor(Interviewmode, levels = c("PAPI", "CAWI"))) 
+```
+
+
+## w2 Build `FreeTextMis`
+
+
+- adjust raw free text variables
+
+```{r}
+#| label: adjust-raw-free-texts
+#| eval: true
+
+w2 <- 
+  
+  w2up |>
+  
+  mutate(
+    pothpartend2 = case_when(
+      
+      # only applies to those who answered "Other"
+      ppartytend != 8 ~ -2,
+      
+      # responded by naming a political party
+      ppartytend == 8 &
+        # longest: "Partei Mensch, Umwelt, Tierschutz"
+        (nchar(pothpartend) >= 3 & nchar(pothpartend) <= 35 &
+    
+        !(pothpartend %in% c("...", "....", "xxx", "XXX", "abc", "ABC", "K.a.", "k.A.")) &
+        !grepl("-1", pothpartend) & 
+        !grepl("-9", pothpartend) &
+        !grepl("KEIN", pothpartend) &
+        !grepl("Kein", pothpartend) &
+        !grepl("Frage", pothpartend) &
+        !grepl("nicht", pothpartend) &
+        !grepl("NICHT", pothpartend) &
+        !grepl("UMGÜLTIG", pothpartend) &
+        !grepl("GEHEIM", pothpartend)) ~ 1,
+    
+     
+      ppartytend == 8 & !(
+        
+        (nchar(pothpartend) >= 3 & nchar(pothpartend) <= 35) &
+    
+        !(pothpartend %in% c("...", "....", "xxx", "XXX", "abc", "ABC", "K.a.", "k.A.")) &
+        !grepl("-1", pothpartend) & 
+        !grepl("-9", pothpartend) &
+        !grepl("KEIN", pothpartend) &
+        !grepl("Kein", pothpartend) &
+        !grepl("Frage", pothpartend) &
+        !grepl("nicht", pothpartend) &
+        !grepl("NICHT", pothpartend) &
+        !grepl("UMGÜLTIG", pothpartend) &
+        !grepl("GEHEIM", pothpartend)) ~ -1),
+    
+    
+    
+    
+    
+    
+    pdiscrimoth2 = case_when(
+      
+      
+      # did not select "other discrim experience"
+      !pdiscrim12 %in% c(2:5) ~ -2,
+      
+      
+      # selected "other discrim experience"
+      pdiscrim12 %in% c(2:5) &
+        
+        (nchar(pdiscrimoth) >= 3  &
+        
+        (!(pdiscrimoth %in% c("...", "....", "xxx", "XXX", "abc", "ABC", "K.a.", "k.A.")) &
+        !grepl("-1", pdiscrimoth) & 
+        !grepl("-9", pdiscrimoth) &
+        !grepl("KEIN", pdiscrimoth) &
+        !grepl("Kein", pdiscrimoth) &
+        !grepl("Frage", pdiscrimoth) &
+        !grepl("nicht", pdiscrimoth) &
+        !grepl("NICHT", pdiscrimoth) &
+        !grepl("UMGÜLTIG", pdiscrimoth) &
+        !grepl("GEHEIM", pdiscrimoth)))  ~ 1,
+        
+        
+      pdiscrim12 %in% c(2:5) &
+        
+        !(nchar(pdiscrimoth) >= 3  &
+        
+        (!(pdiscrimoth %in% c("...", "....", "xxx", "XXX", "abc", "ABC", "K.a.", "k.A.")) &
+        !grepl("-1", pdiscrimoth) & 
+        !grepl("-9", pdiscrimoth) &
+        !grepl("KEIN", pdiscrimoth) &
+        !grepl("Kein", pdiscrimoth) &
+        !grepl("Frage", pdiscrimoth) &
+        !grepl("nicht", pdiscrimoth) &
+        !grepl("NICHT", pdiscrimoth) &
+        !grepl("UMGÜLTIG", pdiscrimoth) &
+        !grepl("GEHEIM", pdiscrimoth)))  ~ -1)) |> 
+  
+  select(lfd, pothpartend2, pdiscrimoth2) |> 
+  
+  right_join(w2, by = "lfd")
+        
+```
+
+
+```{r}
+#| label: build-FreeTextMis-w2
+#| eval: true
+
+w2 <- 
+  w2 |> mutate(
+    
+    # apply standard missing codes to pfoccupation_isco08
+    pfoccupation_isco08 = case_when(pfoccupation_isco08 == 0            ~ -2,
+                                   pfoccupation_isco08 %in% c(8, 9)    ~ -1,
+                                   TRUE                               ~ pfoccupation_isco08),
+    
+    pmoccupation_isco08 = case_when(pmoccupation_isco08 == 0            ~ -2,
+                                   pmoccupation_isco08 %in% c(8, 9)    ~ -1,
+                                   TRUE                               ~ pmoccupation_isco08)) 
+
+
+FreeTextItems_w2 <- 
+  
+  w2 |> select(
+    pfatherbirth, 
+    pfoccupation_isco08, 
+    pmotherbirth, 
+    pmoccupation_isco08,
+    plabincbrut, plabincnet, 
+    potherinc, phiremonth, 
+    phireyear, pworkhrscontr, 
+    pworkhrsact, pbirthyear,
+    pothpartend2, pdiscrimoth2, pdisabdegree) |> colnames()
+ 
+
+w2 <- 
+
+  w2 |> 
+  
+  rowwise() |> 
+  mutate(
+    
+    freetextmissings = sum(across(all_of(FreeTextItems_w2)) %in% c(-1, -9), na.rm = TRUE),
+    
+    N_allFreeTitems = sum(across(all_of(FreeTextItems_w2), ~!. %in% c(-2, -10)), na.rm = TRUE),
+    
+    FrTMisRatio = freetextmissings/N_allFreeTitems) |> 
+  
+  ungroup() 
+ 
+#   mutate(
+#   FreeTextMissings = case_when(FrTMisRatio > 0 ~ "Free text missings",
+#                   FrTMisRatio == 0 ~ "No free text missings",
+#                   
+#                   freetextmissings == 0 & N_allFreeTitems == 0 ~ "No free text missings"),
+#   FreeTextMissings = factor(FreeTextMissings, levels = c("No free text missings", "Free text missings")))  
+# 
+# w2 |> frq(FreeTextMissings)
+
+w2 |> 
+ 
+ggplot(aes(y = FrTMisRatio, fill = Interviewmode)) +
+  geom_boxplot(alpha = 0.6) +
+ # geom_vline(xintercept = 0.014, linetype = "dashed", color = "red", linewidth = 1) +
+ # annotate("text", x = 0.014, y = 0, label = "Cutoff = 0.014", 
+  #         hjust = -0.1, vjust = -1, color = "red") +
+  scale_fill_manual(values = mode_palette) +
+  labs(title = "Freetext Missings in w2",
+       x = "", 
+       y = "") +
+  theme_minimal()
+
+
+
+
+# consistent threshold: mean + 1 SD per group
+
+thresholds_FrTMis_w2 <- 
+   w2 |>
+   group_by(Interviewmode) |> 
+   summarise(
+     thresh_FrTMis = mean(FrTMisRatio, na.rm = TRUE) + sd(FrTMisRatio, na.rm = TRUE),
+     percentile_sp = mean(FrTMisRatio <= thresh_FrTMis, na.rm = TRUE) * 100,
+     prop_above_sp = mean(FrTMisRatio > thresh_FrTMis, na.rm = TRUE) * 100) |> ungroup()
+
+
+
+w2 <- 
+  w2 |> 
+  mutate(FrTMis = 
+           case_when(
+             is.na(FrTMisRatio) ~ "Not applicable",
+             Interviewmode == "PAPI" & FrTMisRatio > thresholds_FrTMis_w2 |> filter(Interviewmode == "PAPI") |> pull(thresh_FrTMis) ~ "High",
+             Interviewmode == "CAWI" & FrTMisRatio > thresholds_FrTMis_w2 |> filter(Interviewmode == "CAWI") |> pull(thresh_FrTMis) ~ "High",
+             TRUE ~ "Not high"),
+         FrTMis = factor(FrTMis, levels = c("Not high", "High", "Not applicable")))
+         
+w2 |> group_by(Interviewmode) |> frq(FrTMis)
+```
+
+
+
+
+
+
+```{r}
+#| label: fig-freetextmissingbyintmodeW12
+#| eval: true
+#| include: true
+#| fig-cap: Free text missings by Interviewmode
+#| fig-cap-location: top
+#| fig-height: 5
+#| fig-show: hold
+
+w2 |>
+     count(Interviewmode, FrTMis, name="n") |>
+     group_by(Interviewmode) |>
+     mutate(share = n/sum(n)) |>
+     ggplot(aes(Interviewmode, share, fill=FrTMis)) +
+  labs(caption = "Free Text Missings by and Mode (15 items over w2)", 
+       x = "",
+     y = "Proportion") +
+     geom_col(position="stack")  +
+     papaja::theme_apa()
+
+
+
+
+w2 |>
+  group_by(Interviewmode) |>
+   count(FrTMisRatio, name="n") |>
+     mutate(share = n/sum(n)) |>
+     ggplot(aes(Interviewmode, share, fill=FrTMisRatio)) +
+     geom_col(position="stack")   +
+labs(caption = "Free Text Missings Ratio by and Mode (15 items over w2)", 
+       x = "",
+     y = "Proportion") +
+ papaja::theme_apa()  +
+ theme(#axis.text.x = element_text(angle = 30, vjust = 0.5),
+       panel.grid.major.y = element_line(color = "grey", linewidth = 0.1))
+```
+
+
+# w2 `ItemNonresponse`
+
+### Problem Vars only
+
+
+```{r}
+#| label: differences-for-problem.vars
+
+
+
+problem.vars <- c("plifesat03", "plifesat04", "plifesat10",
+                  "prelfund01", "prelfund02", "prelfund03", "prelfund04",
+                  "pdiscrim12", "pdiscrimoth", "ppertrust04", "plifesat12")
+
+
+
+w2 |> 
+  select(lfd, Interviewmode,
+         all_of(problem.vars)) |> #names()
+ # select(all_of(mis_items_w2), Interviewmode) |> 
+  group_by(Interviewmode) |> 
+  summarise(across(plifesat03:pdiscrimoth, 
+                   ~ sum(.x %in% c(-1, -9), na.rm = TRUE) / n(), 
+                   .names = "PropMiss_{.col}")) |> 
+  pivot_longer(-Interviewmode, names_to = c("dummy", "Variable"), 
+               names_pattern = "(PropMiss_)(.*)", values_to = "Prop") |> 
+  select(-dummy) |> 
+  mutate(Variable = factor(Variable, levels = rev(unique(Variable)))) |>  
+
+ggplot(aes(x = Variable, y = Prop, colour = Interviewmode, group = Interviewmode)) +
+  geom_point(size = 1) +
+  geom_line(linewidth = 0.8) +
+  scale_colour_manual(values = mode_palette) +
+  labs(
+    x = "Items",
+    y = "Nonresponse Rate (Proportion)",
+    colour = "Interviewmode",
+    title = "Nonresponse Rate of Problem Vars by Item and Mode (w2)"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(size = 8, angle = 90, vjust = 0.5),
+    legend.position = "bottom"
+  )
+```
+
+
+```{r}
+#| label: problem-vars-itemnonresponse-w2
+
+
+
+w2 |> 
+    select(lfd, Interviewmode,
+           all_of(problem.vars)) |>
+  group_by(Interviewmode) |> 
+  summarise(across(plifesat03:pdiscrimoth, 
+                   ~ sum(.x %in% c(-1, -9), na.rm = TRUE) / n(), 
+                   .names = "PropMiss_{.col}")) 
+
+
+# Absolute counts + N per group
+counts <- w2 |>
+  select(lfd, Interviewmode, all_of(problem.vars)) |>
+  group_by(Interviewmode) |>
+  summarise(
+    n = n(),
+    across(all_of(problem.vars),
+           ~ sum(.x %in% c(-1, -9), na.rm = TRUE),
+           .names = "miss_{.col}")
+  )
+
+# Chi-square test per item
+results <- map_dfr(problem.vars, function(var) {
+  col <- paste0("miss_", var)
+  
+  miss  <- counts[[col]]        # c(n_miss_PAPI, n_miss_CAWI)
+  n     <- counts$n             # c(n_PAPI, n_CAWI)
+  notmiss <- n - miss
+  
+  mat <- matrix(c(miss, notmiss), nrow = 2,
+                dimnames = list(c("PAPI", "CAWI"), c("Miss", "NotMiss")))
+  
+  # Fisher when expected cell counts < 5, otherwise chi-squared
+  test <- if (any(chisq.test(mat)$expected < 5)) {
+    fisher.test(mat)
+  } else {
+    chisq.test(mat, correct = FALSE)
+  }
+  
+  tibble(
+    Item       = var,
+    p_value    = test$p.value,
+    method     = test$method,
+    prop_PAPI  = miss[1] / n[1],
+    prop_CAWI  = miss[2] / n[2]
+  )
+}) |>
+  mutate(
+    p_adj      = p.adjust(p_value, method = "BH"),  # Benjamini-Hochberg
+    significant = p_adj < 0.05
+  ) |>
+  arrange(p_adj)
+
+print(results)
+
+
+# all significant except "prelfund04"
+
+
+# Satisfaction: childcare provision (plifesat10); trust: coworkers (ppertrust04); satisfaction: school or vocational education (plifesat12); satisfaction: household tasks (plifesat04)
+problem.vars <- c("plifesat03", "plifesat04", "plifesat10",
+                  "prelfund01", "prelfund02", "prelfund03", #"prelfund04",
+                  "pdiscrim12", "pdiscrimoth", "ppertrust04", "plifesat12")
+
+
+```
+
+### All other items
+
+```{r}
+#| label: fig-nonrespItemsw2
+#| fig-cap: Nonresponse Items w2
+#| eval: true
+
+w2 |> 
+  select(lfd, Interviewmode,
+         plifesat01:hsavprecaut,
+       # exclude the wave-2 free-text items (measured separately as FreeTextMissings)
+
+       -(any_of(FreeTextItems_w2))) |> 
+  group_by(Interviewmode) |> 
+  summarise(across(plifesat01:hsavprecaut, 
+                   ~ sum(.x %in% c(-1, -9), na.rm = TRUE) / n(), 
+                   .names = "PropMiss_{.col}")) |> 
+  pivot_longer(-Interviewmode, names_to = c("dummy", "Variable"), 
+               names_pattern = "(PropMiss_)(.*)", values_to = "Prop") |> 
+  select(-dummy) |> 
+  mutate(Variable = factor(Variable, levels = rev(unique(Variable)))) |>  
+
+ggplot(aes(x = Variable, y = Prop, colour = Interviewmode, group = Interviewmode)) +
+  geom_point(size = 1) +
+  geom_line(linewidth = 0.8) +
+  scale_colour_manual(values = mode_palette) +
+  labs(
+    x = "Items",
+    y = "Nonresponse Rate (Proportion)",
+    colour = "Interviewmode",
+    title = "Nonresponse Rate by Item and Mode (w2)"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(size = 3, angle = 90, vjust = 0.5),
+    legend.position = "bottom"
+  )
+
+```
+
+
+
+```{r}
+#| label: build-item-nonresponse-w2
+#| eval: true
+
+mis_df_w2 <- 
+  w2 |> 
+  select(lfd, Interviewmode,
+         plifesat01:hsavprecaut,
+         # exclude the wave-2 free-text items (measured separately as FreeTextMissings)
+
+         -(any_of(FreeTextItems_w2)),
+         all_of(problem.vars))
+
+
+
+  
+# w2 items with high nonresponse rates
+
+manymissings_CAWI <- mis_df_w2 |> filter(Interviewmode == "CAWI") |>
+  summarise_all(~sum(.  %in% c(-1, -9))) |> 
+  pivot_longer(
+    everything(), names_to = "Variable", values_to = "Numb.missings") |> 
+  rowwise() |> 
+  mutate(Prop.missings = Numb.missings/(mis_df_w2 |> filter(Interviewmode == "CAWI") |> nrow())) |> 
+  ungroup() |> 
+  arrange(desc(Prop.missings)) |> 
+  filter(Prop.missings > .15) |> pull(Variable) #|> paste(collapse = '", "')
+
+manymissings_PAPI <- mis_df_w2 |> filter(Interviewmode == "PAPI") |> 
+  summarise_all(~sum(.  %in% c(-1, -9))) |> 
+  pivot_longer(
+    everything(), names_to = "Variable", values_to = "Numb.missings") |> 
+  rowwise() |> 
+  mutate(Prop.missings = Numb.missings/(mis_df_w2 |> filter(Interviewmode == "PAPI") |> nrow())) |> 
+  ungroup() |> 
+  arrange(desc(Prop.missings)) |> 
+  filter(Prop.missings > .15) |> pull(Variable) #|> paste(collapse = '", "')
+
+
+list(
+  CAWI_only = setdiff(manymissings_CAWI, manymissings_PAPI),
+  PAPI_only = setdiff(manymissings_PAPI, manymissings_CAWI)
+)
+
+exclusion_items <- unique(c(manymissings_CAWI, manymissings_PAPI, problem.vars)) #17 items excluded
+
+mis_items_w2 <- 
+  mis_df_w2 |> 
+  select(
+    
+    -c(lfd, Interviewmode, #qmethod,
+       contains("interview"),
+       contains("Nonresp"),
+       
+       all_of(exclusion_items))) |> 
+  colnames()
+
+tNR1 <- Sys.time()
+
+
+
+mis_df_w2 <- 
+  mis_df_w2 |> 
+  rowwise() |> 
+  mutate(
+  Nonresponses = sum(across(all_of(mis_items_w2)) %in% c(-1, -9), na.rm = TRUE),
+  N_allNonrespOpportunities_woBO = sum(across(all_of(mis_items_w2), ~!. %in% c(-2, -10)), na.rm = TRUE),
+ # BO (-10) counted as "not shown", i.e., not a missed opportunity"
+  NonrespRatio = Nonresponses/N_allNonrespOpportunities_woBO) |> 
+  ungroup()
+
+
+paste("Total duration (NonrespRatio):", time_length(interval(tNR1, Sys.time()), "minute"), "minutes")
+
+w2 <- 
+  mis_df_w2 |> select(lfd, NonrespRatio) |> 
+  right_join(w2, by = "lfd")
+
+```
+
+
+
+
+# w2 Extreme/Middle
+
+
+
+
+
+```{r}
+#| label: w2-Extreme-and-middle-items
+#| eval: true
+
+
+# 129 items
+extrm5_items <- 
+  w2 |> select(
+    
+    # shared with `Nondiff`
+    plifesat01:plifesat12, #-3 = 9 items
+    pinform01:pinform09,
+    pedugoal01:pedugoal11,
+    pfathbeh01:pfathbeh08,
+    pmothbeh01:pmothbeh08,
+    psocdes01:psocdes06,
+    pnarcism01:pnarcism06,
+    pdiscrim01:pdiscrim12,
+    pgender01:pgender05,
+    pauthor01:pauthor09,
+    pactivity01:pactivity20,
+    
+    
+    
+    # exclusively
+    pinfsocmed,
+    pfeelnow01:pfeelnow05,
+    psoccoh01:psoccoh04,
+    pconpec01:pconpec04,
+    pcovidcosts01:pcovidcosts04,
+    psocdom01:psocdom04,
+    psubjhealth
+    
+  ) |> colnames()
+
+# 21
+extrm6_items <- 
+  w2 |> select(
+    pschwartz01:pschwartz21
+  ) |> colnames()
+
+# 17
+extrm11_items <- 
+  w2 |> select(
+    
+    # shared with `Nondiff`
+    pglob01:pglob05,
+    pmig01:pmig03,
+    ppertrust01:ppertrust08,
+
+    # exclusively
+    pcovidtax
+    
+  ) |> colnames()
+
+
+t1 <- Sys.time()
+
+
+w2 <- 
+  w2 |>
+  rowwise() |>
+  mutate(
+    
+    # all extreme values on 5-likert
+    E5 = sum(across(all_of(extrm5_items)) %in% c(1, 5), na.rm = TRUE),
+    # all middle values on 5-likert
+    M5 = sum(across(all_of(extrm5_items)) == 3, na.rm = TRUE),
+    
+    # all extreme and middle values on 5-likert
+    EM.S5 = sum(E5, M5, na.rm = TRUE),
+    
+    
+     # all extreme values on 6-likert
+    E6 = sum(across(all_of(extrm6_items)) %in% c(1, 6), na.rm = TRUE),
+    # no middle category
+    
+    # all extreme and middle values on 6-likert: see E6
+  
+     
+    
+    # all extreme values on 11-likert
+    E11 = sum(across(all_of(extrm11_items)) %in% c(0, 10), na.rm = TRUE),
+    # all middle values on 11-likert
+    M11 = sum(across(all_of(extrm11_items)) %in% c(5), na.rm = TRUE),
+    
+    # all extreme and middle values on 11-likert
+    EM.S11 = sum(E11, M11, na.rm = TRUE),
+    
+    
+    
+    N5_all = sum(across(all_of(extrm5_items)) > 0, na.rm = TRUE),
+    N6_all = sum(across(all_of(extrm6_items)) > 0, na.rm = TRUE),
+    N11_all = sum(across(all_of(extrm11_items)) >= 0, na.rm = TRUE),
+      
+   
+    
+    # all extreme values
+    E.S5S6S11 = sum(E5, E6, E11, na.rm = TRUE),
+    # all middle values (there are no M6)
+    M.S5S11 = sum(M5, M11, na.rm = TRUE),
+    
+    # all items responded 
+    N_allExMidOpportunities = sum(N5_all, N6_all, N11_all),
+    
+    # proportion of extreme and middle values on 5-likert by all responses
+    Ratio_S5 = ifelse(N5_all == 0, NA, EM.S5/N5_all),
+    # proportion of extreme and middle values on 6-likert by all responses
+    Ratio_S6 = ifelse(N6_all == 0, NA, E6/N6_all),
+    # proportion of extreme and middle values on 11-likert by all responses
+    Ratio_S11 = ifelse(N11_all == 0, NA, EM.S11/N11_all),
+    
+    
+    Ratio_Extr = ifelse(N_allExMidOpportunities == 0, NA, E.S5S6S11/N_allExMidOpportunities),
+    Ratio_Mid = ifelse(N_allExMidOpportunities == 0, NA, M.S5S11/N_allExMidOpportunities),
+    
+    RatioExMid = sum(E.S5S6S11, M.S5S11, na.rm = TRUE)/N_allExMidOpportunities
+    
+  ) |> ungroup()
+
+print(paste("Total duration (Extreme/Middle, mins):", as.numeric(Sys.time()-t1, "mins")))
+
+
+cor.test(w2$Ratio_Mid, w2$Ratio_Extr)
+
+```
+
+
+## w2 Categorize `Extr` & `Mid`
+
+
+
+
+```{r}
+#| label: w2-categorize-Extr-Mid
+
+
+thresholds_ExM <- 
+  w2 |> 
+  
+  group_by(Interviewmode) |>
+  summarise(
+    thresh_Extr_Ratio = mean(Ratio_Extr, na.rm = TRUE) + sd(Ratio_Extr, na.rm = TRUE),
+    thresh_Mid_Ratio = mean(Ratio_Mid, na.rm = TRUE) + sd(Ratio_Mid, na.rm = TRUE),
+    
+    percentile_Extr = mean(Ratio_Extr <= thresh_Extr_Ratio, na.rm = TRUE) * 100,
+    percentile_Mid = mean(Ratio_Mid <= thresh_Mid_Ratio, na.rm = TRUE) * 100,
+    
+    prop_above_Extr = mean(Ratio_Extr > thresh_Extr_Ratio, na.rm = TRUE) * 100,
+    prop_above_Mid = mean(Ratio_Mid > thresh_Mid_Ratio, na.rm = TRUE) * 100
+  )
+
+w2 <- 
+  w2 |> 
+  mutate(Extr = 
+           case_when(
+             is.na(Ratio_Extr) ~ "Not applicable",
+             Interviewmode == "PAPI" & Ratio_Extr > thresholds_ExM |> filter(Interviewmode == "PAPI") |> pull(thresh_Extr_Ratio) ~ "High",
+             Interviewmode == "CAWI" & Ratio_Extr > thresholds_ExM |> filter(Interviewmode == "CAWI") |> pull(thresh_Extr_Ratio) ~ "High",
+             TRUE ~ "Not high"),
+         Extr = factor(Extr, levels = c("Not high", "High", "Not applicable")),
+         Mid = 
+           case_when(
+             is.na(Ratio_Mid) ~ "Not applicable",
+             Interviewmode == "PAPI" & Ratio_Mid > thresholds_ExM |> filter(Interviewmode == "PAPI") |> pull(thresh_Mid_Ratio) ~ "High",
+             Interviewmode == "CAWI" & Ratio_Mid > thresholds_ExM |> filter(Interviewmode == "CAWI") |> pull(thresh_Mid_Ratio) ~ "High",
+             TRUE ~ "Not high"),
+         
+         Mid = factor(Mid, levels = c("Not high", "High", "Not applicable")))
+
+
+w2 |> count(Interviewmode, Extr); w2 |> count(Interviewmode, Mid)
+```
+
+
+
+# w2 `Nondifferentiation`
+
+
+
+
+See @fig-w2correlationsND
+
+```{r}
+#| label: w2-nondiffer-calculate
+#| eval: true
+
+plifesat.items <- w2 |> select(plifesat01:plifesat12) |> colnames()
+pinform.items <- w2 |> select(pinform01:pinform09) |> colnames()
+pglob.items <- w2 |> select(pglob01:pglob05) |> colnames()
+ppertrust.items <- w2 |> select(ppertrust01:ppertrust08) |> colnames()
+pedugoal.items <- w2 |> select(pedugoal01:pedugoal11) |> colnames()
+pfathbeh.items <- w2 |> select(pfathbeh01:pfathbeh08) |> colnames()
+pmothbeh.items <- w2 |> select(pmothbeh01:pmothbeh08) |> colnames()
+psocdes.items <- w2 |> select(psocdes01:psocdes06) |> colnames()
+pschwartz.items <- w2 |> select(pschwartz01:pschwartz21) |> colnames()
+pnarcism.items <- w2 |> select(pnarcism01:pnarcism06) |> colnames()
+pdiscrim.items <- w2 |> select(pdiscrim01:pdiscrim12) |> colnames()
+pgender.items <- w2 |> select(pgender01:pgender05) |> colnames()
+pauthor.items <- w2 |> select(pauthor01:pauthor09) |> colnames()
+pactivity.items <- w2 |> select(pactivity01:pactivity20) |> colnames()
+
+
+items_list_w2 <- list(plifesat.items, pinform.items, pglob.items, 
+                   ppertrust.items, pedugoal.items, pfathbeh.items, 
+                   pmothbeh.items, psocdes.items, pschwartz.items, 
+                   pnarcism.items, pdiscrim.items, pgender.items, 
+                   pauthor.items, pactivity.items)
+
+
+tND <- Sys.time()
+
+
+
+# extract all items from items_list
+all_items_w2 <- unlist(items_list_w2)
+
+w2_papi <- 
+  w2 |> 
+  filter(Interviewmode == "PAPI") |> 
+  select(lfd, all_of(all_items_w2)) |>  # select only the item columns
+  meanRootPairs(items_list_w2) |> 
+  ungroup()
+
+w2_cawi  <- 
+  w2 |> 
+  filter(Interviewmode == "CAWI") |> 
+  select(lfd, all_of(all_items_w2)) |> 
+   meanRootPairs(items_list_w2) |> ungroup()
+
+
+# merge PAPI and CAWI
+w2_meanroot <- 
+  bind_rows(w2_papi, w2_cawi)
+
+# join onto the original w2 dataset
+w2 <- w2 |> 
+  left_join(w2_meanroot |> 
+              select(lfd, starts_with("temp_index"), starts_with("temp_max"), starts_with("MeanRootPairs_")), by = "lfd")
+
+
+
+Sys.time() - tND 
+
+
+```
+
+
+- 14 item packages
+
+```{r}
+#| label: fig-w2correlationsND
+#| fig-cap: Correlations of Nondifferentiation Items
+#| eval: true
+#| include: true
+#| fig-height: 9
+#| fig-width: 9
+#| fig-show: hold
+
+chart.Correlation(w2 |> select(contains("MeanRootPairs")), histogram = TRUE)
+
+```
+
+
+### w2 Nd SEM using CT-C(M-1) Model
+
+
+
+
+```{r}
+#| label: w2-SEM
+#| eval: true
+#| include: true
+
+# correlated traits: WK (weak), ST (strong), Biographical (BIO)
+# correlated methods-1: Reference-Scale: 11-likert
+w2LatND_mod <- "
+
+WK =~
+MeanRootPairs_plifesat +  MeanRootPairs_pglob  + MeanRootPairs_pedugoal +   MeanRootPairs_pgender + MeanRootPairs_pauthor + MeanRootPairs_pactivity + MeanRootPairs_pnarcism + MeanRootPairs_pdiscrim + MeanRootPairs_pinform 
+
+
+ST =~ 
+ MeanRootPairs_psocdes + MeanRootPairs_pschwartz + MeanRootPairs_ppertrust 
+
+
+BIO =~
+MeanRootPairs_pfathbeh + MeanRootPairs_pmothbeh
+
+#grids with scales with less-than-11-point-likert scales
+u11 =~ 
+MeanRootPairs_pinform + MeanRootPairs_pedugoal + MeanRootPairs_pfathbeh + MeanRootPairs_pmothbeh + MeanRootPairs_psocdes + MeanRootPairs_pschwartz + MeanRootPairs_pnarcism + MeanRootPairs_pdiscrim + MeanRootPairs_pgender + MeanRootPairs_pauthor + MeanRootPairs_pactivity 
+
+BIO ~~ 0 * u11
+WK ~~ 0 * u11
+ST ~~ 0 * u11
+
+"
+
+
+# simple model without groups
+w2LatND_fit <- sem(w2LatND_mod, w2, meanstructure = TRUE)
+summary(w2LatND_fit, fit = TRUE)
+fscores <- lavPredict(w2LatND_fit)  # matrix, not a list
+idx     <- lavInspect(w2LatND_fit, "case.idx")  # single vector
+
+# merge the scores back in, following the lavaan documentation for single-group models:
+for (fs in colnames(fscores)) {
+  w2[idx, fs] <- fscores[, fs]
+}
+
+
+
+```
+
+
+
+
+```{r}
+
+
+
+# model used as the basis for the coefficient table
+SEM_w2 <- table_results(w2LatND_fit)|>
+    mutate(label = label |>
+               str_replace("MeanRootPairs_", "Mrp.") |>
+               str_replace("=~", ".BY.") |>
+               str_replace("~~", ".WITH.") |>
+               str_replace("~1", "") |>
+               str_replace("^\\.", "Means.")) |>
+  
+  filter(!str_starts(label, "Variances"),
+         !str_starts(label, "Means")) |> 
+  select(label, est_sig, se, confint) 
+
+
+SEM_w2|> 
+  kable(
+    format = "latex",
+    booktabs = TRUE,
+    digits = 3,
+    col.names = c("Label",
+                  "Est.", "SE", "95\\% CI"),
+    escape = FALSE
+  ) 
+
+```
+
+
+# Wave 3
+
+
+```{r}
+#| label: define-analysis-sample-w3
+#| include: true
+#| eval: true     
+
+
+w3p_full |> nrow()
+
+
+w3_lfds <-  #8127
+  w1 |> filter(Sample == "Sample") |> 
+  inner_join(w3p_full, by = "pid") |> 
+  pull(pid)
+
+w3 <- 
+  w3p_full |> 
+  filter(pid %in% w3_lfds)
+w3 |> nrow()
+
+
+```
+
+
+## w3 Build `Breakoff`
+
+
+```{r}
+#| label: w3-build-breakoff
+
+w3 <- 
+  w3 |> 
+  mutate(BreakOff = case_when(
+    intvollst %in% c(2,3) ~ "Break-off",
+    qmethod == 3 ~ "PAPI",              #PAPI
+    (qmethod == 4 & intvollst == 1) ~ "No Break-off"
+  ),
+    BreakOff = factor(BreakOff, levels = c("No Break-off", "Break-off", "PAPI")))
+
+w3 |> frq(BreakOff)
+# 129 cases
+```
+
+
+# w3  `Speeder`
+
+See fig-w3Speedingcategorization
+
+
+```{r}
+#| label: fig-w3Speedingcategorization
+#| fig-show: hold
+#| fig-cap: Speeding at w3
+#| include: true
+#| eval: true
+#| fig-height: 4
+
+w3 |> 
+  filter(qmethod == 4) |> 
+  
+  select(pid, BreakOff) |> 
+  left_join(w3_dur |> select(pid,  interviewdauer), by = "pid") |> 
+  #left_join(w3_dur, by = "pid") |> 
+  left_join(w1 |> select(pid, Age_cat = Age_cat_Sample), by = "pid") |> 
+  
+  #select(-plifesat03_dur, -plifesat04_dur, -plifesat10_dur, -contains("prelfund")) |> 
+
+
+  mutate(
+   
+
+    # not include into calculation of quantile borders: N = 54 Break-off cases
+    # not include into calculation of quantile borders: N = 54 Break-off cases
+  interviewdauer = case_when(BreakOff == "Break-off" ~ NA, 
+                             TRUE ~ interviewdauer)) |> 
+  
+  group_by(Age_cat) |> 
+
+
+  summarise(
+    `1` = quantile(interviewdauer, probs = 0.01, na.rm = TRUE),
+    `3` = quantile(interviewdauer, probs = 0.03, na.rm = TRUE),
+    `5` = quantile(interviewdauer, probs = 0.05, na.rm = TRUE),
+    `10` = quantile(interviewdauer, probs = 0.1, na.rm = TRUE),
+    `15` = quantile(interviewdauer, probs = 0.15, na.rm = TRUE),
+    `20` = quantile(interviewdauer, probs = 0.2, na.rm = TRUE),
+    `25` = quantile(interviewdauer, probs = 0.25, na.rm = TRUE),
+    `33` = quantile(interviewdauer, probs = 0.33, na.rm = TRUE),
+    `50` = quantile(interviewdauer, probs = 0.5, na.rm = TRUE),
+    `66` = quantile(interviewdauer, probs = 0.66, na.rm = TRUE), 
+    `70` = quantile(interviewdauer, probs = 0.7, na.rm = TRUE),
+    `75` = quantile(interviewdauer, probs = 0.75, na.rm = TRUE),
+    `80` = quantile(interviewdauer, probs = 0.80, na.rm = TRUE),
+    `85` = quantile(interviewdauer, probs = 0.85, na.rm = TRUE),
+    `95` = quantile(interviewdauer, probs = 0.95, na.rm = TRUE)
+  ) |>
+  gather(key = "Quantile", value = "Value", -Age_cat) |> 
+  mutate(Quantile = as.numeric(Quantile)) |> 
+  ggplot(aes(y = Quantile, 
+             x = Value, color = Age_cat)) +
+  geom_line() +
+  scale_y_continuous(breaks = seq(0,100, by = 5)) +
+  labs(x = "Interview duration", y = "Quantile",
+       title = "w3: Quantiles of interview duration per age group (w3)") +
+  papaja::theme_apa()
+  
+
+```
+
+
+
+```{r}
+#|label: w3-build-speeding-variable
+#|eval: true
+
+
+w3_dur <- 
+  w3_dur |> 
+  left_join(w1 |> select(pid, Age_cat = Age_cat_Sample), by = "pid") |> 
+   
+    #inner_join(w3_lfds, by = "lfd") |>
+  # Step 1: set 0 to NA in all item columns
+  mutate(across(ends_with("_dur"),
+           ~ if_else(.x == 0, NA_real_, .x))
+  )  |> 
+    
+    # -0 cases not in the analysis sample due to age inconsistency (0) or w1/w2-only participation (0)
+    filter(!is.na(Age_cat)) |> 
+    
+    
+  group_by(Age_cat) |>
+  # Step 2: compute medians (0/NA excluded)
+  mutate(
+    across(ends_with("_dur"), 
+           list(md = ~median(.x, na.rm = TRUE)), 
+           .names = "{.col}_md")
+  ) |>
+  
+  # Step 3: speeding indicators (_s) with group-specific medians
+  mutate(
+    across(
+      .cols = ends_with("_dur"),
+      .fns = ~ case_when(
+        is.na(.x) ~ NA_real_,
+        .x < 0.4 * get(paste0(cur_column(), "_md")) ~ 1,
+        TRUE ~ 0
+      ),
+      .names = "{.col}_s"
+    )
+  ) |>
+  ungroup() |>
+  
+  # Step 4: sum scores
+  rowwise() |>
+  mutate(
+    
+    # number of items whose duration is < 0.4 * the item's median duration across all respondents in the same age group (can be 0 if the respondent did not speed on any item)
+    ItemsSpeeded = sum(c_across(ends_with("_s")), na.rm = TRUE),
+    TotalItems = sum(!is.na(c_across(ends_with("_s")))),
+    ProportionSpeeding = ItemsSpeeded / TotalItems)|>
+  ungroup() 
+
+  
+
+
+
+w3_dur |>
+  select(ItemsSpeeded, TotalItems, ProportionSpeeding) |>
+  pivot_longer(everything(), names_to = "Variable", values_to = "Value") |>
+  ggplot(aes(x = Value)) +
+      geom_histogram(fill="#69b3a2", color="#e9ecef") +
+
+ # geom_density(fill = "steelblue", alpha = 0.5) +
+  facet_wrap(~Variable, scales = "free") +
+  theme_minimal() +
+  labs(title = "Distribution of Speeding Indicators (w3)")
+
+
+
+# Complete sample (sensitivity analysis only)
+w3_dur |> filter(ProportionSpeeding>0.000) |> nrow()
+w3_dur |> filter(ProportionSpeeding >0 & ProportionSpeeding<0.019324) |> pull(ItemsSpeeded) |> summary()  #1-4 Items - marginal
+
+# upper median range: 
+w3_dur |> filter(ProportionSpeeding>=0.019324) |> pull(ItemsSpeeded) |> summary()  #1-193 Items
+
+#### TOP 10 MOST SPEEDED ITEMS
+
+ # filter the _s columns
+ s_cols <- w3_dur |> 
+     select(ends_with("_s")) |> 
+     names()
+ 
+ # compute column sums (number of 1s, ignoring NAs)
+ w3_dur |> 
+     summarise(across(all_of(s_cols), ~ sum(.x == 1, na.rm = TRUE))) |> 
+     pivot_longer(everything(), names_to = "variable", values_to = "sum_1er") |> 
+     arrange(desc(sum_1er)) |> 
+   head(10)
+ 
+
+# pweathev03_dur_s	652			
+# ptaxparty06_dur_s	617			
+# pedu02_dur_s	613			
+# pweathev02_dur_s	589			
+# ptaxparty02_dur_s	582			
+# pladder01_dur_s	576			
+# ptaxego_dur_s	545			
+# pcoleffic02_dur_s	544			
+# pweathev01_dur_s	538			
+# pgendego_dur_s	503	
+
+ 
+
+ 
+ 
+# consistent threshold: mean + 1 SD per group
+ 
+thresholds_speeding_w3 <- 
+   w3_dur |>
+   group_by(Age_cat) |> 
+   summarise(
+     thresh_Speed = mean(ProportionSpeeding, na.rm = TRUE) + sd(ProportionSpeeding, na.rm = TRUE),
+     percentile_sp = mean(ProportionSpeeding <= thresh_Speed, na.rm = TRUE) * 100,
+     prop_above_sp = mean(ProportionSpeeding > thresh_Speed, na.rm = TRUE) * 100) |> ungroup()
+
+w3_dur <- 
+  w3_dur |> 
+  mutate(
+    Speeding = case_when(
+      is.na(ProportionSpeeding) ~NA,
+      Age_cat == "Age_T1[18.0-40.0]" & ProportionSpeeding > thresholds_speeding_w3 |> filter(Age_cat == "Age_T1[18.0-40.0]") |> pull(thresh_Speed) ~ "Speeding",
+      Age_cat == "Age_T2[40.0-60.0]" & ProportionSpeeding > thresholds_speeding_w3 |> filter(Age_cat == "Age_T2[40.0-60.0]") |> pull(thresh_Speed) ~ "Speeding",
+      Age_cat == "Age_T3[60.0-97.0]" & ProportionSpeeding > thresholds_speeding_w3 |> filter(Age_cat == "Age_T3[60.0-97.0]") |> pull(thresh_Speed) ~ "Speeding",
+      TRUE ~"No speeding"
+    ), 
+    Speeding = factor(Speeding, levels = c("No speeding", "Speeding"))
+  )
+
+w3_dur |>
+  ggplot(aes(x = ProportionSpeeding)) +
+  geom_density(alpha = 0.6, fill = "orange") +
+  geom_vline(data = thresholds_speeding_w3,
+             aes(xintercept = thresh_Speed),
+             linetype = "dashed", color = "red", linewidth = 1) +
+  geom_text(data = thresholds_speeding_w3,
+            aes(x = thresh_Speed, y = 0,
+                label = paste0("cutoff = ", round(thresh_Speed, 4))),
+            hjust = -0.1, vjust = -1, color = "red", size = 3) +
+  facet_wrap(~ Age_cat) +
+  labs(title = "Distribution of Proportion Speeding by age group (w3)",
+       subtitle = "dashed line: group-specific mean + 1 SD cutoff",
+       x = "Proportion Speeding",
+       y = "Density") +
+  theme_minimal()
+
+
+
+
+
+
+# join to w3 
+w3 <- 
+  w3 |> 
+  left_join(
+    w3_dur |> select(pid, ProportionSpeeding, Speeding), by = "pid"
+  )
+```
+
+
+
+## w3 `Interviewmode`
+
+```{r}
+#| label: build-interviewmode-w3
+#| eval: true
+#| include: true
+
+w3 <-   
+  w3 |> 
+ mutate(
+    Interviewmode = case_when(
+      qmethod == 3 ~ "PAPI",
+      qmethod == 4 ~ "CAWI"
+    ),
+    Interviewmode = factor(Interviewmode, levels = c("PAPI", "CAWI")))
+
+```
+
+## w3 `FreeTextMis`
+
+
+```{r}
+#| label: FreeTextMis-w3
+#| eval: true
+#| include: true
+
+
+
+w3_up <- 
+  w3_up |> 
+  mutate(
+    
+    peduOth = case_when(
+      pedu01.raw != 6  ~ -2,
+      
+      pedu01.raw == 6 & (nchar(peduoth01.raw) >= 3 & #nchar(peduoth0.raw1) <= 20 &
+    
+        !(peduoth01.raw %in% c("...", "....", "xxx", "XXX", "abc", "ABC", "K.a.", "k.A.")) &
+        !grepl("-1", peduoth01.raw) & 
+        !grepl("-9", peduoth01.raw)) ~ 1, 
+      
+      
+      pedu01.raw == 6 & !(
+        nchar(peduoth01.raw) >= 3 & #nchar(peduoth01.raw) <= 20 &
+    
+        !(peduoth01.raw %in% c("...", "....", "xxx", "XXX", "abc", "ABC", "K.a.", "k.A.")) &
+        !grepl("-1", peduoth01.raw) & 
+        !grepl("-9", peduoth01.raw)) ~ -1),
+    
+    
+    # apply standard missing codes to poccupation_isco08 
+    poccupation_isco08_2 = case_when(poccupation_isco08 == 0            ~ -2,
+                                   poccupation_isco08 %in% c(8, 9)    ~ -1,
+                                   TRUE                               ~ poccupation_isco08),
+    
+    
+    
+    plifeventOth = case_when(
+      plifevent14.raw != 1  ~ -2,
+      
+      plifevent14.raw == 1 & (nchar(plifevoth14.raw) >= 3 & #nchar(plifevoth14.raw) <= 20 &
+    
+        !(plifevoth14.raw %in% c("...", "....", "xxx", "XXX", "abc", "ABC", "K.a.", "k.A.")) &
+        !grepl("-1", plifevoth14.raw) & 
+        !grepl("-9", plifevoth14.raw)) ~ 1, 
+      
+      
+      plifevent14.raw == 1 & !(
+        nchar(plifevoth14.raw) >= 3 & #nchar(plifevoth14.raw) <= 20 &
+    
+        !(plifevoth14.raw %in% c("...", "....", "xxx", "XXX", "abc", "ABC", "K.a.", "k.A.")) &
+        !grepl("-1", plifevoth14.raw) & 
+        !grepl("-9", plifevoth14.raw)) ~ -1),
+    
+    
+    
+    
+    pnetmodwillOth = case_when(
+      pnetmodwill02.raw != 5  ~ -2,
+      
+      pnetmodwill02.raw == 5 & (nchar(pnetmodwill03) >= 3 & #nchar(pnetmodwill03) <= 20 &
+    
+        !(pnetmodwill03 %in% c("...", "....", "xxx", "XXX", "abc", "ABC", "K.a.", "k.A.")) &
+        !grepl("-1", pnetmodwill03) & 
+        !grepl("-9", pnetmodwill03)) ~ 1, 
+      
+      
+      pnetmodwill02.raw == 5 & !(
+        nchar(pnetmodwill03) >= 3 & #nchar(pnetmodwill03) <= 20 &
+    
+        !(pnetmodwill03 %in% c("...", "....", "xxx", "XXX", "abc", "ABC", "K.a.", "k.A.")) &
+        !grepl("-1", pnetmodwill03) & 
+        !grepl("-9", pnetmodwill03)) ~ -1),
+    
+    
+    pdeviceOth = case_when(
+      pdevice05.raw != 1 ~ -2,
+      
+      pdevice05.raw == 1 & (nchar(pothdevice.raw) >= 3 &
+                             
+        !(pothdevice.raw %in% c("...", "....", "xxx", "XXX", "abc", "ABC", "K.a.", "k.A.")) &
+        !grepl("-1", pothdevice.raw) & 
+        !grepl("-9", pothdevice.raw)) ~ 1,
+      
+      
+      pdevice05.raw == 1 & !(nchar(pothdevice.raw) >= 3 &
+                             
+        !(pothdevice.raw %in% c("...", "....", "xxx", "XXX", "abc", "ABC", "K.a.", "k.A.")) &
+        !grepl("-1", pothdevice.raw) & 
+        !grepl("-9", pothdevice.raw)) ~ -1),
+    
+    
+    pmemberOth = case_when(
+    
+    !(pmember11.raw %in% c(1, 2, 3)) ~ -2,
+    
+    pmember11.raw %in% c(1, 2, 3) & (nchar(pmemberoth.raw) >= 3 & 
+                                   
+        !(pmemberoth.raw %in% c("...", "....", "xxx", "XXX", "abc", "ABC", "K.a.", "k.A.")) &
+        !grepl("-1", pmemberoth.raw) & 
+        !grepl("-9", pmemberoth.raw)) ~ 1, 
+    
+    pmember11.raw %in% c(1, 2, 3) & !(nchar(pmemberoth.raw) >= 3 & 
+       
+    
+        !(pmemberoth.raw %in% c("...", "....", "xxx", "XXX", "abc", "ABC", "K.a.", "k.A.")) &
+        !grepl("-1", pmemberoth.raw) & 
+        !grepl("-9", pmemberoth.raw)) ~ -1
+      
+    
+    ))
+    
+    
+    
+w3 <- 
+  w3 |> 
+  left_join(w3_up |> select(pid, 
+                             peduOth,
+                             poccupation_isco08_2,
+                             plifeventOth,
+                             pnetmodwillOth,
+                             pdeviceOth,
+                             pmemberOth), by = "pid")
+
+
+FreeTextItemsw3 <- 
+  
+  w3 |> select(
+    pmemberOth,
+    pbirthmnth, pbirthyear,
+    hhhsize,
+    hhhage01, hhhage02,
+    peduOth,
+    plabincbrut, plabincnet, potherinc,
+    poccupation_isco08_2,
+    phiremonth, phireyear,
+    pworkhrscontr, pworkhrsact,
+    pnetmodwillOth,
+    pdeviceOth,
+    plifeventOth
+    
+    
+    ) |> colnames()
+
+
+w3 <-
+  
+  w3 |>  
+  
+  rowwise() |> 
+  mutate(
+    
+    freetextmissings = sum(across(all_of(FreeTextItemsw3)) %in% c(-1, -9), na.rm = TRUE),
+    
+    N_allFreeTitems = sum(across(all_of(FreeTextItemsw3), ~!. %in% c(-2, -10)), na.rm = TRUE),
+    
+    FrTMisRatio = freetextmissings/N_allFreeTitems) |> 
+  
+   ungroup()
+
+
+
+thresholds_FrTMis_w3 <- 
+   w3 |>
+   group_by(Interviewmode) |> 
+   summarise(
+     thresh_FrTMis = mean(FrTMisRatio, na.rm = TRUE) + sd(FrTMisRatio, na.rm = TRUE),
+     percentile_sp = mean(FrTMisRatio <= thresh_FrTMis, na.rm = TRUE) * 100,
+     prop_above_sp = mean(FrTMisRatio > thresh_FrTMis, na.rm = TRUE) * 100) |> ungroup()
+
+thresholds_FrTMis_w3 
+
+
+w3 <- 
+  w3 |> 
+  mutate(FrTMis = 
+           case_when(
+             is.na(FrTMisRatio) ~ "Not applicable",
+             Interviewmode == "PAPI" & FrTMisRatio > thresholds_FrTMis_w3 |> filter(Interviewmode == "PAPI") |> pull(thresh_FrTMis) ~ "High",
+             Interviewmode == "CAWI" & FrTMisRatio > thresholds_FrTMis_w3 |> filter(Interviewmode == "CAWI") |> pull(thresh_FrTMis) ~ "High",
+             TRUE ~ "Not high"),
+         FrTMis = factor(FrTMis, levels = c("Not high", "High", "Not applicable")))
+         
+w3 |> group_by(Interviewmode) |> frq(FrTMis)
+
+
+```
+
+
+
+
+```{r}
+#| label: fig-FrTMisRatiobyintmodew3
+#| fig-cap: Free text missings by Interviewmode (w3)
+#| fig-cap-location: top
+#| eval: true
+#| include: true
+#| fig-height: 5
+#| fig-show: hold
+
+posn_d <- position_dodge(0.4)
+
+
+ 
+  w3 |> select(pid, Interviewmode, FrTMisRatio) |> 
+  pivot_longer(cols = 3) |> 
+  
+  ggplot(aes(Interviewmode, value, group = Interviewmode)) +
+  
+  
+  geom_jitter(aes(Interviewmode, value, color = Interviewmode, group = Interviewmode),
+              stat = "identity",
+              position = "jitter",
+              alpha = .3) + 
+  
+  stat_summary(fun = mean, 
+               geom = "point",
+               position = posn_d,
+               size = 4,
+               color = "black") +
+  
+  labs (y = "Ratio Free Text Item Missings",
+        color = "Interviewmode", caption = "Free Text Missings by Interviewmode (w3)") +
+  scale_color_manual(name = "Interviewmode", values = mode_palette) +
+
+    
+   papaja::theme_apa() +
+
+   theme(axis.text.x = element_blank(), #element_text(size = 9, angle = 15),
+        axis.ticks.x = element_blank(),
+        axis.line.x = element_blank(),
+        legend.position="bottom")
+      
+ 
+  
+w3 |> group_by(Interviewmode) |> 
+  summarise(mean.FrTMisRatio = mean(FrTMisRatio, na.rm = TRUE),
+            sd.FrTMisRatio = sd(FrTMisRatio, na.rm = TRUE))
+
+w3 |> group_by(Interviewmode) |> 
+  summarise(mean.FrTMisRatio = mean(FrTMisRatio, na.rm = TRUE),
+            sd.FrTMisRatio = sd(FrTMisRatio, na.rm = TRUE))
+
+```
+
+
+
+```{r}
+#| label: fig-freetextmissingbyintmodew3
+#| eval: true
+#| include: true
+#| fig-cap: Free text missings by Interviewmode (w3)
+#| fig-cap-location: top
+#| fig-height: 5
+#| fig-show: hold
+
+
+
+w3 |>
+  group_by(Interviewmode) |>
+  count(FrTMis) |>
+  mutate(share = (n*100)/sum(n)) |>
+  
+
+  ggplot(aes(x = FrTMis, y = share, fill = Interviewmode)) + 
+  geom_bar(stat = "identity", position = position_dodge(),color="#e9ecef") +
+  labs(caption = "Free Text Missings by Interviewmode (16 items over w3)", 
+       x = "", 
+       y = "Percentage", 
+       fill = "Interviewmode") +
+  scale_y_continuous(limits = c(0,100)) +
+  scale_fill_manual(values = mode_palette) +
+ papaja::theme_apa()
+
+
+```
+
+
+# w3 Extreme/Middle
+
+
+
+
+For comparison of extreme vs. middle response distributions by interviewmode see @fig-extrmintmodevioline 
+
+
+```{r}
+#| label: w3-Extreme-and-middle-items
+#| eval: true
+#| include: true
+
+
+
+
+
+#106
+extrm5_itemsw3 <- 
+  w3 |> select(
+    
+    pinequal01, pinequal02,
+    pcoleffic01, pcoleffic02,
+    pselfeffic01, pselfeffic02,
+    pclimsor, 
+    pclimpolcon01:pclimpolcon03,
+    pclimcons01:pclimcons03,
+    pundesinfra2,
+    pislamphob01:pislamphob04,
+    pimmsal,
+    ptaxsal, 
+    pclimsal, 
+    pgendsal,
+    
+    # shared with nondiff:
+    pbsjo01:pbsjo05,
+    pbsjperc01:pbsjperc05,
+    puss01:puss08,
+    pconsp01:pconsp05,
+    pgendeq01:pgendeq06,
+    pregident01:pregident05,
+    pinfrasat01:pinfrasat18,
+    pclimattit01:pclimattit06,
+    pcliminfra01:pcliminfra05,
+    ppopul10:ppopul15,
+    pantisem01:pantisem06,
+    prefmove01:prefmove06,
+    psubjhealth,
+    pnetmodwill01, pnetmodwill02
+    
+  ) |> colnames()
+
+#54
+extrm11_itemsw3 <- 
+  w3 |> select(
+
+    pweathev01:pweathev03,
+    pundesinfra1,
+    pimmego, 
+    ptaxego, 
+    pclimego,
+    pgendego,
+    plifesat,
+   
+    # shared with nondiff:
+    pladder01:pladder05,
+    pconcern01:pconcern12,
+    pimmparty01:pimmparty07,
+    ptaxparty01:ptaxparty07,
+    pclimparty01:pclimparty07,
+    pgendparty01:pgendparty07
+    
+  ) |> colnames()
+
+
+
+ 
+
+t1 <- Sys.time()
+
+
+w3 <- 
+  w3 |>
+  rowwise() |>
+  mutate(
+    
+    # all extreme values on 5-likert
+    E5 = sum(across(all_of(extrm5_itemsw3)) %in% c(1, 5), na.rm = TRUE),
+    # all middle values on 5-likert
+    M5 = sum(across(all_of(extrm5_itemsw3)) == 3, na.rm = TRUE),
+    
+    # all extreme and middle values on 5-likert
+    EM.S5 = sum(E5, M5, na.rm = TRUE),
+    
+    
+    
+    # all extreme values on 11-likert
+    E11 = sum(across(all_of(extrm11_itemsw3)) %in% c(0, 10), na.rm = TRUE),
+    # all middle values on 11-likert
+    M11 = sum(across(all_of(extrm11_itemsw3)) %in% c(5), na.rm = TRUE),
+    
+    # all extreme and middle values on 11-likert
+    EM.S11 = sum(E11, M11, na.rm = TRUE),
+    
+    
+    
+    N5_all = sum(across(all_of(extrm5_itemsw3)) > 0, na.rm = TRUE),
+    N11_all = sum(across(all_of(extrm11_itemsw3)) >= 0, na.rm = TRUE),
+      
+   
+    
+    # all extreme values
+    E.S5S11 = sum(E5, E11, na.rm = TRUE),
+    # all middle values
+    M.S5S11 = sum(M5, M11, na.rm = TRUE),
+    
+    # all items responded 
+    N_allExMidOpportunities = sum(N5_all, N11_all),
+    
+    # proportion of extreme and middle values on 5-likert by all responses
+    Ratio_S5 = ifelse(N5_all == 0, NA, EM.S5/N5_all),
+    
+    # proportion of extreme and middle values on 11-likert by all responses
+    Ratio_S11 = ifelse(N11_all == 0, NA, EM.S11/N11_all),
+    
+    
+    Ratio_Extr = ifelse(N_allExMidOpportunities == 0, NA, E.S5S11/N_allExMidOpportunities),
+    Ratio_Mid = ifelse(N_allExMidOpportunities == 0, NA, M.S5S11/N_allExMidOpportunities),
+    
+    RatioExMid = sum(E.S5S11, M.S5S11, na.rm = TRUE)/N_allExMidOpportunities
+    
+  ) |> ungroup()
+
+print(paste("Total duration (Extreme/Middle, mins):", as.numeric(Sys.time()-t1, "mins")))
+
+cor.test(w3$Ratio_Mid, w3$Ratio_Extr)
+
+```
+
+
+
+
+### w3 Categorization `ExtrMi`
+
+
+```{r}
+#| label: w3-categorize-Extr-Mid
+#| eval: true
+
+
+thresholds_ExM <- 
+  w3 |> 
+  
+  group_by(Interviewmode) |>
+  summarise(
+    thresh_Extr_Ratio = mean(Ratio_Extr, na.rm = TRUE) + sd(Ratio_Extr, na.rm = TRUE),
+    thresh_Mid_Ratio = mean(Ratio_Mid, na.rm = TRUE) + sd(Ratio_Mid, na.rm = TRUE),
+    
+    percentile_Extr = mean(Ratio_Extr <= thresh_Extr_Ratio, na.rm = TRUE) * 100,
+    percentile_Mid = mean(Ratio_Mid <= thresh_Mid_Ratio, na.rm = TRUE) * 100,
+    
+    prop_above_Extr = mean(Ratio_Extr > thresh_Extr_Ratio, na.rm = TRUE) * 100,
+    prop_above_Mid = mean(Ratio_Mid > thresh_Mid_Ratio, na.rm = TRUE) * 100
+  )
+
+w3 <- 
+  w3 |> 
+  mutate(Extr = 
+           case_when(
+             is.na(Ratio_Extr) ~ "Not applicable",
+             Interviewmode == "PAPI" & Ratio_Extr > thresholds_ExM |> filter(Interviewmode == "PAPI") |> pull(thresh_Extr_Ratio) ~ "High",
+             Interviewmode == "CAWI" & Ratio_Extr > thresholds_ExM |> filter(Interviewmode == "CAWI") |> pull(thresh_Extr_Ratio) ~ "High",
+             TRUE ~ "Not high"),
+         Extr = factor(Extr, levels = c("Not high", "High", "Not applicable")),
+         Mid = 
+           case_when(
+             is.na(Ratio_Mid) ~ "Not applicable",
+             Interviewmode == "PAPI" & Ratio_Mid > thresholds_ExM |> filter(Interviewmode == "PAPI") |> pull(thresh_Mid_Ratio) ~ "High",
+             Interviewmode == "CAWI" & Ratio_Mid > thresholds_ExM |> filter(Interviewmode == "CAWI") |> pull(thresh_Mid_Ratio) ~ "High",
+             TRUE ~ "Not high"),
+         
+         Mid = factor(Mid, levels = c("Not high", "High", "Not applicable")))
+
+
+w3 |> count(Interviewmode, Extr); w3 |> count(Interviewmode, Mid)
+```
+
+
+
+# w3 `ItemNonresponse`
+
+### Problem Vars only
+
+
+```{r}
+#| label: differences-for-problem.vars-w3
+
+
+
+problem.vars <- c("pmember11", "hhhage03")
+
+
+
+w3 |> 
+  select(pid, Interviewmode,
+         all_of(problem.vars)) |> #names()
+ # select(all_of(mis_items_w3), Interviewmode) |> 
+  group_by(Interviewmode) |> 
+  summarise(across(pmember11:hhhage03, 
+                   ~ sum(.x %in% c(-1, -9), na.rm = TRUE) / n(), 
+                   .names = "PropMiss_{.col}")) |> 
+  pivot_longer(-Interviewmode, names_to = c("dummy", "Variable"), 
+               names_pattern = "(PropMiss_)(.*)", values_to = "Prop") |> 
+  select(-dummy) |> 
+  mutate(Variable = factor(Variable, levels = rev(unique(Variable)))) |>  
+
+ggplot(aes(x = Variable, y = Prop, colour = Interviewmode, group = Interviewmode)) +
+  geom_point(size = 1) +
+  geom_line(linewidth = 0.8) +
+  scale_colour_manual(values = mode_palette) +
+  labs(
+    x = "Items",
+    y = "Nonresponse Rate (Proportion)",
+    colour = "Interviewmode",
+    title = "Nonresponse Rate of Problem Vars by Item and Mode (w3)"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(size = 8, angle = 90, vjust = 0.5),
+    legend.position = "bottom"
+  )
+```
+
+
+```{r}
+#| label: problem-vars-itemnonresponse-w3
+
+
+
+w3 |> 
+    select(pid, Interviewmode,
+           all_of(problem.vars)) |>
+  group_by(Interviewmode) |> 
+  summarise(across(pmember11:hhhage03, 
+                   ~ sum(.x %in% c(-1, -9), na.rm = TRUE) / n(), 
+                   .names = "PropMiss_{.col}")) 
+
+
+# Absolute counts + N per group
+counts <- w3 |>
+  select(pid, Interviewmode, all_of(problem.vars)) |>
+  group_by(Interviewmode) |>
+  summarise(
+    n = n(),
+    across(all_of(problem.vars),
+           ~ sum(.x %in% c(-1, -9), na.rm = TRUE),
+           .names = "miss_{.col}")
+  )
+
+# Chi-square test per item
+results <- map_dfr(problem.vars, function(var) {
+  col <- paste0("miss_", var)
+  
+  miss  <- counts[[col]]        # c(n_miss_PAPI, n_miss_CAWI)
+  n     <- counts$n             # c(n_PAPI, n_CAWI)
+  notmiss <- n - miss
+  
+  mat <- matrix(c(miss, notmiss), nrow = 2,
+                dimnames = list(c("PAPI", "CAWI"), c("Miss", "NotMiss")))
+  
+  # Fisher when expected cell counts < 5, otherwise chi-squared
+  test <- if (any(chisq.test(mat)$expected < 5)) {
+    fisher.test(mat)
+  } else {
+    chisq.test(mat, correct = FALSE)
+  }
+  
+  tibble(
+    Item       = var,
+    p_value    = test$p.value,
+    method     = test$method,
+    prop_PAPI  = miss[1] / n[1],
+    prop_CAWI  = miss[2] / n[2]
+  )
+}) |>
+  mutate(
+    p_adj      = p.adjust(p_value, method = "BH"),  # Benjamini-Hochberg
+    significant = p_adj < 0.05
+  ) |>
+  arrange(p_adj)
+
+print(results)
+
+
+# all significant => problem_vars remain unchanged
+
+```
+
+### All other items
+
+```{r}
+#| label: fig-nonrespItemsw3
+#| fig-cap: Nonresponse Items w3
+#| eval: true
+
+w3 |> 
+  select(pid, Interviewmode,
+         pbsjo03:pdevice05,
+       -(any_of(FreeTextItemsw3))) |> 
+  group_by(Interviewmode) |> 
+  summarise(across(pbsjo03:pdevice05, 
+                   ~ sum(.x %in% c(-1, -9), na.rm = TRUE) / n(), 
+                   .names = "PropMiss_{.col}")) |> 
+  pivot_longer(-Interviewmode, names_to = c("dummy", "Variable"), 
+               names_pattern = "(PropMiss_)(.*)", values_to = "Prop") |> 
+  select(-dummy) |> 
+  mutate(Variable = factor(Variable, levels = rev(unique(Variable)))) |>  
+
+ggplot(aes(x = Variable, y = Prop, colour = Interviewmode, group = Interviewmode)) +
+  geom_point(size = 1) +
+  geom_line(linewidth = 0.8) +
+  scale_colour_manual(values = mode_palette) +
+  labs(
+    x = "Items",
+    y = "Nonresponse Rate (Proportion)",
+    colour = "Interviewmode",
+    title = "Nonresponse Rate by Item and Mode (w3)"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(size = 3, angle = 90, vjust = 0.5),
+    legend.position = "bottom"
+  )
+
+
+```
+
+
+
+
+
+
+```{r}
+#| label: w3-build-item-nonresponse
+#| eval: true
+#| include: true
+
+
+mis_df_w3 <- 
+  w3 |> 
+  
+  # if a number of persons <14yrs in household is stated, there'd be no reason to check the box
+  mutate(
+    
+    hhhage03_mod = as.double(hhhage03), 
+     
+     hhhage03_mod = case_when(
+       
+       
+       #if number of children > 14 > 0, no need to check hhhage03 
+       hhhage02 > 0 ~ 0, #& hhhage03_mod < 0 ~ 0,
+     #  hhhage02 == -2 ~ -2,
+       
+       TRUE ~ hhhage03_mod),
+       
+                            
+                            
+        pnoincsource = case_when(
+      # if any of the pincsource items are selected, there'd be no reason to check the box
+    (pincsource01 == 1 | pincsource02 == 1 | pincsource03 == 1 | pincsource04 == 1 | pincsource05 == 1 | pincsource06 == 1) & Interviewmode == "PAPI" ~ 0, 
+    TRUE ~ pnoincsource
+  ))  |> 
+  
+   # for all "pincsource"-items: 
+  mutate(across(starts_with("pincsource"), 
+                
+                ~ case_when(
+                  
+                  # if all items are missing and pnoincsource is also missing, treat it as missing
+                  all(c_across(pincsource01:pincsource06) %in% c(-1, -9) & pnoincsource %in% c(-1, -9)) ~ -1,
+                  # otherwise, leave everything as is
+                  TRUE ~ .
+                )
+               )) |> 
+  
+  mutate(
+         # for the plifevent01 item in PAPI conditions
+         pincsource01 = case_when(
+           
+           # if this item is labelled as missing, but other plifevent items are well filled in, let's treat it a "no" instead of a missing
+           pincsource01 %in% c(-1, -9) & 
+             (pincsource02 == 1 | pincsource03 == 1 | pincsource04 == 1 | pincsource05 == 1 | pincsource06 == 1) & Interviewmode == "PAPI" ~ 0, 
+         TRUE ~ pincsource01),
+         
+         pincsource02 = case_when(
+           
+           pincsource02 %in% c(-1, -9) & 
+             (pincsource01 == 1 | pincsource03 == 1 | pincsource04 == 1 | pincsource05 == 1 | pincsource06 == 1) & Interviewmode == "PAPI" ~ 0, 
+         TRUE ~ pincsource02),
+         
+         pincsource03 = case_when(
+           
+           pincsource03 %in% c(-1, -9) & 
+             (pincsource02 == 1 | pincsource01 == 1 | pincsource04 == 1 | pincsource05 == 1 | pincsource06 == 1) & Interviewmode == "PAPI" ~ 0, 
+         TRUE ~ pincsource03),
+         
+         
+         pincsource04 = case_when(
+           
+           pincsource04 %in% c(-1, -9) & 
+             (pincsource02 == 1 | pincsource03 == 1 | pincsource01 == 1 | pincsource05 == 1 | pincsource06 == 1) & Interviewmode == "PAPI" ~ 0, 
+         TRUE ~ pincsource04),
+         
+         
+         pincsource05 = case_when(
+           
+           pincsource05 %in% c(-1, -9) & 
+             (pincsource02 == 1 | pincsource03 == 1 | pincsource04 == 1 | pincsource01 == 1 | pincsource06 == 1) & Interviewmode == "PAPI" ~ 0, 
+         TRUE ~ pincsource05),
+         
+         
+         pincsource06 = case_when(
+           
+           pincsource06 %in% c(-1, -9) & 
+             (pincsource02 == 1 | pincsource03 == 1 | pincsource04 == 1 | pincsource05 == 1 | pincsource01 == 1) & Interviewmode == "PAPI" ~ 0, 
+         TRUE ~ pincsource06)) |> 
+  
+  mutate(
+    across(all_of(w3 |> select(plifevent01:plifevent14) |> colnames()),
+           
+           # if pnolifevent was selected, 
+           ~ ifelse(pnolifevent == 1, 0, .)),
+    
+    
+    
+     # for the plifevent01 item in PAPI conditions
+         plifevent01 = case_when(
+           
+           # if this item is labelled as missing, but other plifevent items are well filled in, let's treat it a "no" instead of a missing
+           plifevent01 %in% c(-1, -9) & 
+             (plifevent02 == 1 | plifevent03 == 1 | plifevent04 == 1 | plifevent05 == 1 |
+                plifevent06 == 1 | plifevent07 == 1 | plifevent08 == 1 | plifevent09 == 1 | plifevent10 == 1 |
+                plifevent11 == 1 | plifevent12 == 1 | plifevent13 == 1 | plifevent14 == 1 ) & Interviewmode == "PAPI" ~ 0, 
+         TRUE ~ plifevent01),
+    
+   
+         plifevent02 = case_when(
+           
+           # if this item is labelled as missing, but other plifevent items are well filled in, let's treat it a "no" instead of a missing
+           plifevent02 %in% c(-1, -9) & 
+             (plifevent01 == 1  | plifevent03 == 1 | plifevent04 == 1 | plifevent05 == 1 |
+                plifevent06 == 1 | plifevent07 == 1 | plifevent08 == 1 | plifevent09 == 1 | plifevent10 == 1 |
+                plifevent11 == 1 | plifevent12 == 1 | plifevent13 == 1 | plifevent14 == 1 ) & Interviewmode == "PAPI" ~ 0, 
+         TRUE ~ plifevent02),
+    
+    
+   
+         plifevent03 = case_when(
+           
+           # if this item is labelled as missing, but other plifevent items are well filled in, let's treat it a "no" instead of a missing
+           plifevent03 %in% c(-1, -9) & 
+             (plifevent01 == 1 | plifevent02 == 1  | plifevent04 == 1 | plifevent05 == 1 |
+                plifevent06 == 1 | plifevent07 == 1 | plifevent08 == 1 | plifevent09 == 1 | plifevent10 == 1 |
+                plifevent11 == 1 | plifevent12 == 1 | plifevent13 == 1 | plifevent14 == 1 ) & Interviewmode == "PAPI" ~ 0, 
+         TRUE ~ plifevent03),
+    
+    plifevent04 = case_when(
+           
+           # if this item is labelled as missing, but other plifevent items are well filled in, let's treat it a "no" instead of a missing
+           plifevent04 %in% c(-1, -9) & 
+             (plifevent01 == 1 | plifevent02 == 1 | plifevent03 == 1 |  plifevent05 == 1 |
+                plifevent06 == 1 | plifevent07 == 1 | plifevent08 == 1 | plifevent09 == 1 | plifevent10 == 1 |
+                plifevent11 == 1 | plifevent12 == 1 | plifevent13 == 1 | plifevent14 == 1 ) & Interviewmode == "PAPI" ~ 0, 
+         TRUE ~ plifevent04),
+    
+    plifevent05 = case_when(
+           
+           # if this item is labelled as missing, but other plifevent items are well filled in, let's treat it a "no" instead of a missing
+           plifevent05 %in% c(-1, -9) & 
+             (plifevent01 == 1 | plifevent02 == 1 | plifevent03 == 1 | plifevent04 == 1 | 
+                plifevent06 == 1 | plifevent07 == 1 | plifevent08 == 1 | plifevent09 == 1 | plifevent10 == 1 |
+                plifevent11 == 1 | plifevent12 == 1 | plifevent13 == 1 | plifevent14 == 1 ) & Interviewmode == "PAPI" ~ 0, 
+         TRUE ~ plifevent05),
+    
+    plifevent06 = case_when(
+           
+           # if this item is labelled as missing, but other plifevent items are well filled in, let's treat it a "no" instead of a missing
+           plifevent06 %in% c(-1, -9) & 
+             (plifevent01 == 1 | plifevent02 == 1 | plifevent03 == 1 | plifevent04 == 1 | plifevent05 == 1 |
+                plifevent07 == 1 | plifevent08 == 1 | plifevent09 == 1 | plifevent10 == 1 |
+                plifevent11 == 1 | plifevent12 == 1 | plifevent13 == 1 | plifevent14 == 1 ) & Interviewmode == "PAPI" ~ 0, 
+         TRUE ~ plifevent06),
+    
+    plifevent07 = case_when(
+           
+           # if this item is labelled as missing, but other plifevent items are well filled in, let's treat it a "no" instead of a missing
+           plifevent07 %in% c(-1, -9) & 
+             (plifevent01 == 1 | plifevent02 == 1 | plifevent03 == 1 | plifevent04 == 1 | plifevent05 == 1 |
+                plifevent06 == 1 |  plifevent08 == 1 | plifevent09 == 1 | plifevent10 == 1 |
+                plifevent11 == 1 | plifevent12 == 1 | plifevent13 == 1 | plifevent14 == 1 ) & Interviewmode == "PAPI" ~ 0, 
+         TRUE ~ plifevent07),
+    
+    plifevent08 = case_when(
+           
+           # if this item is labelled as missing, but other plifevent items are well filled in, let's treat it a "no" instead of a missing
+           plifevent08 %in% c(-1, -9) & 
+             (plifevent01 == 1 | plifevent02 == 1 | plifevent03 == 1 | plifevent04 == 1 | plifevent05 == 1 |
+                plifevent06 == 1 | plifevent07 == 1 |plifevent09 == 1 | plifevent10 == 1 |
+                plifevent11 == 1 | plifevent12 == 1 | plifevent13 == 1 | plifevent14 == 1 ) & Interviewmode == "PAPI" ~ 0, 
+         TRUE ~ plifevent08),
+    
+    plifevent09 = case_when(
+           
+           # if this item is labelled as missing, but other plifevent items are well filled in, let's treat it a "no" instead of a missing
+           plifevent09 %in% c(-1, -9) & 
+             (plifevent01 == 1 | plifevent02 == 1 | plifevent03 == 1 | plifevent04 == 1 | plifevent05 == 1 |
+                plifevent06 == 1 | plifevent07 == 1 | plifevent08 == 1 |  plifevent10 == 1 |
+                plifevent11 == 1 | plifevent12 == 1 | plifevent13 == 1 | plifevent14 == 1 ) & Interviewmode == "PAPI" ~ 0, 
+         TRUE ~ plifevent09),
+    
+    plifevent10 = case_when(
+           
+           # if this item is labelled as missing, but other plifevent items are well filled in, let's treat it a "no" instead of a missing
+           plifevent10 %in% c(-1, -9) & 
+             (plifevent01 == 1 | plifevent02 == 1 | plifevent03 == 1 | plifevent04 == 1 | plifevent05 == 1 |
+                plifevent06 == 1 | plifevent07 == 1 | plifevent08 == 1 | plifevent09 == 1 |
+                plifevent11 == 1 | plifevent12 == 1 | plifevent13 == 1 | plifevent14 == 1 ) & Interviewmode == "PAPI" ~ 0, 
+         TRUE ~ plifevent10),
+    
+    plifevent11 = case_when(
+           
+           # if this item is labelled as missing, but other plifevent items are well filled in, let's treat it a "no" instead of a missing
+           plifevent11 %in% c(-1, -9) & 
+             (plifevent01 == 1 | plifevent02 == 1 | plifevent03 == 1 | plifevent04 == 1 | plifevent05 == 1 |
+                plifevent06 == 1 | plifevent07 == 1 | plifevent08 == 1 | plifevent09 == 1 | plifevent10 == 1 |
+                plifevent12 == 1 | plifevent13 == 1 | plifevent14 == 1 ) & Interviewmode == "PAPI" ~ 0, 
+         TRUE ~ plifevent11),
+    
+    plifevent12 = case_when(
+           
+           # if this item is labelled as missing, but other plifevent items are well filled in, let's treat it a "no" instead of a missing
+           plifevent12 %in% c(-1, -9) & 
+             (plifevent01 == 1 | plifevent02 == 1 | plifevent03 == 1 | plifevent04 == 1 | plifevent05 == 1 |
+                plifevent06 == 1 | plifevent07 == 1 | plifevent08 == 1 | plifevent09 == 1 | plifevent10 == 1 |
+                plifevent11 == 1 | plifevent13 == 1 | plifevent14 == 1 ) & Interviewmode == "PAPI" ~ 0, 
+         TRUE ~ plifevent12),
+    
+    plifevent13 = case_when(
+           
+           # if this item is labelled as missing, but other plifevent items are well filled in, let's treat it a "no" instead of a missing
+           plifevent13 %in% c(-1, -9) & 
+             (plifevent01 == 1 | plifevent02 == 1 | plifevent03 == 1 | plifevent04 == 1 | plifevent05 == 1 |
+                plifevent06 == 1 | plifevent07 == 1 | plifevent08 == 1 | plifevent09 == 1 | plifevent10 == 1 |
+                plifevent11 == 1 | plifevent12 == 1 | plifevent14 == 1 ) & Interviewmode == "PAPI" ~ 0, 
+         TRUE ~ plifevent13),
+    
+    plifevent14 = case_when(
+           
+           # if this item is labelled as missing, but other plifevent items are well filled in, let's treat it a "no" instead of a missing
+           plifevent14 %in% c(-1, -9) & 
+             (plifevent01 == 1 | plifevent02 == 1 | plifevent03 == 1 | plifevent04 == 1 | plifevent05 == 1 |
+                plifevent06 == 1 | plifevent07 == 1 | plifevent08 == 1 | plifevent09 == 1 | plifevent10 == 1 |
+                plifevent11 == 1 | plifevent12 == 1 | plifevent13 == 1) & Interviewmode == "PAPI" ~ 0,
+         TRUE ~ plifevent14),
+  
+  pnolabinc_mod = as.double(pnolabinc),
+    pnolabinc_mod = 
+      case_when(
+        (plabincbrut > 0 | plabincnet > 0) ~ 0,
+     
+        plabincbrut  %in% c(-1, -9) & 
+          plabincnet %in%  c(-1, -9)  & 
+          !pnolabinc_mod %in% c(0, 1) ~ -1,
+          
+        
+        TRUE ~ pnolabinc_mod
+      )) |> 
+ 
+  
+    select(c(pid, Interviewmode, pbsjo01:pnetmodwill02,
+             pnolabinc_mod, hhhage03_mod),
+           -hhhage03, -pnolabinc,
+             -any_of(FreeTextItemsw3),
+           
+           # these items have extremely high missing rates, and it cannot be see what share of this is false coding and what share is nonresponse => items are excluded
+           -pmember11, -hhhage03_mod)
+    
+
+    
+w3 |> filter(pmember11 != -10) |>  group_by(Interviewmode) |> frq(pmember11)    
+w3 |> filter(hhhage03 != -10) |>  group_by(Interviewmode) |> frq(hhhage03)  
+
+# item columns 3:261
+mis_items_w3 <- 
+  mis_df_w3 |> 
+  select(
+    c(3:261)) |> colnames()
+
+# number of respondents per mode (denominators for the missing-rate check below)
+n_cawi <- mis_df_w3 |> filter(Interviewmode == "CAWI") |> nrow()
+n_papi <- mis_df_w3 |> filter(Interviewmode == "PAPI") |> nrow()
+
+# missing counts per item and mode (denominators: mode-specific N)
+manymissings_CAWI <- mis_df_w3 |> filter(Interviewmode == "CAWI") |>
+  summarise_all(~sum(.  %in% c(-1, -9))) |>
+  pivot_longer(
+    everything(), names_to = "Variable", values_to = "Numb.missings") |>
+  rowwise() |>
+  mutate(Prop.missings = Numb.missings/n_cawi) |>
+  ungroup() |>
+  arrange(desc(Prop.missings))
+manymissings_CAWI
+
+manymissings_PAPI <- mis_df_w3 |> filter(Interviewmode == "PAPI") |>
+  summarise_all(~sum(.  %in% c(-1, -9))) |>
+  pivot_longer(
+    everything(), names_to = "Variable", values_to = "Numb.missings") |>
+  rowwise() |>
+  mutate(Prop.missings = Numb.missings/n_papi) |>
+  ungroup() |>
+  arrange(desc(Prop.missings))
+manymissings_PAPI
+
+
+mis_df_w3 <- 
+  mis_df_w3 |> 
+  rowwise() |> 
+  mutate(
+  Nonresponses = sum(across(all_of(mis_items_w3)) %in% c(-1, -9), na.rm = TRUE),
+  N_allNonrespOpportunities = sum(across(all_of(mis_items_w3), ~!. %in% c(-2,  -10)), na.rm = TRUE),
+
+  NonrespRatio = Nonresponses/N_allNonrespOpportunities) |> 
+  ungroup()
+
+
+
+
+
+
+w3 <- 
+  mis_df_w3 |> select(pid, NonrespRatio) |> 
+  right_join(w3, by = "pid") 
+    
+
+quantile(w3$NonrespRatio, prob = c(0.33, 0.66))
+
+
+```
+
+# w3 `Nondifferentiation`
+
+
+See @fig-w3correlationsND
+
+```{r}
+#| label: w3-nondiffer-calculate
+#| eval: true
+
+
+pbsjo.items <- w3 |> select(pbsjo01:pbsjo05) |> colnames()
+pbsjperc.items <- w3 |> select(pbsjperc01:pbsjperc05) |> colnames()
+puss.items <- w3 |> select(puss01:puss08) |> colnames()
+pladder.items <- w3 |> select(pladder01:pladder05) |> colnames()
+pconcern.items <- w3 |> select(pconcern01:pconcern12) |> colnames()
+pconsp.items <- w3 |> select(pconsp01:pconsp05) |> colnames()
+pgendeq.items <- w3 |> select(pgendeq01:pgendeq06) |> colnames()
+pregident.items <- w3 |> select(pregident01:pregident05) |> colnames()
+pinfrasat.items <- w3 |> select(pinfrasat01:pinfrasat18) |> colnames()
+pclimattit.items <- w3 |> select(pclimattit01:pclimattit06) |> colnames()
+pcliminfra.items <- w3 |> select(pcliminfra01:pcliminfra05) |> colnames()
+ppopul.items <- w3 |> select(ppopul10:ppopul15) |> colnames()
+pantisem.items <- w3 |> select(pantisem01:pantisem06) |> colnames()
+prefmove.items <- w3 |> select(prefmove01:prefmove06) |> colnames()
+pimmparty.items <- w3 |> select(pimmparty01:pimmparty07) |> colnames()
+ptaxparty.items <- w3 |> select(ptaxparty01:ptaxparty07) |> colnames()
+pclimparty.items <- w3 |> select(pclimparty01:pclimparty07) |> colnames()
+pgendparty.items <- w3 |> select(pgendparty01:pgendparty07) |> colnames()
+
+
+
+
+items_list_w3 <- list(pbsjo.items, pbsjperc.items, puss.items, 
+                   pladder.items, pconcern.items, pconsp.items, 
+                   pgendeq.items, pregident.items, pinfrasat.items, 
+                   pclimattit.items, pcliminfra.items, ppopul.items, 
+                   pantisem.items, prefmove.items, pimmparty.items,
+                   ptaxparty.items, pclimparty.items, pgendparty.items)
+
+
+
+tND <- Sys.time()
+
+
+
+# extract all items from items_list
+all_items_w3 <- unlist(items_list_w3)
+
+w3_papi <- 
+  w3 |> 
+  filter(Interviewmode == "PAPI") |> 
+  select(pid, all_of(all_items_w3)) |>  # select only the item columns
+  meanRootPairs(items_list_w3) |> 
+  ungroup()
+
+w3_cawi  <- 
+  w3 |> 
+  filter(Interviewmode == "CAWI") |> 
+  select(pid, all_of(all_items_w3)) |> 
+   meanRootPairs(items_list_w3) |> ungroup()
+
+
+# merge PAPI and CAWI
+w3_meanroot <- 
+  bind_rows(w3_papi, w3_cawi)
+
+# join onto the original w3 dataset
+w3 <- w3 |> 
+  left_join(w3_meanroot |> 
+              select(pid, starts_with("temp_index"), starts_with("temp_max"), starts_with("MeanRootPairs_")), by = "pid")
+
+
+#10.75397 minutes
+
+Sys.time() - tND 
+
+
+```
+
+
+- 18 item packages
+
+```{r}
+#| label: fig-w3correlationsND
+#| fig-cap: Correlations of Nondifferentiation Items
+#| eval: true
+#| include: true
+#| fig-height: 9
+#| fig-width: 9
+#| fig-show: hold
+
+chart.Correlation(w3 |> select(contains("MeanRootPairs")), histogram = TRUE)
+
+```
+
+
+### w3 Nd SEM using CT-C(M-1) Model
+
+
+
+```{r}
+#| label: w3-SEM
+#| eval: true
+#| include: true
+
+# correlated traits: WK (weak), ST (strong), Selfexperienced (SE)
+# correlated methods-1: Reference-Scale: 11-likert
+w3LatND_mod <- "
+
+
+WK =~
+MeanRootPairs_puss + MeanRootPairs_pconcern + MeanRootPairs_pconsp + MeanRootPairs_pgendeq + MeanRootPairs_pregident + MeanRootPairs_pinfrasat + MeanRootPairs_pcliminfra + MeanRootPairs_ppopul 
+
+
+ST =~ 
+ MeanRootPairs_pbsjo + MeanRootPairs_pbsjperc + MeanRootPairs_pladder + MeanRootPairs_pclimattit + MeanRootPairs_pantisem + MeanRootPairs_prefmove + MeanRootPairs_pimmparty + MeanRootPairs_ptaxparty + MeanRootPairs_pclimparty + MeanRootPairs_pgendparty
+
+
+# nondiff for scales with fewer than 11 Likert points
+u11 =~ 
+MeanRootPairs_pbsjo + MeanRootPairs_pbsjperc + MeanRootPairs_puss + MeanRootPairs_pconsp + MeanRootPairs_pgendeq + MeanRootPairs_pregident + MeanRootPairs_pinfrasat +  MeanRootPairs_pclimattit + MeanRootPairs_pcliminfra + MeanRootPairs_ppopul + MeanRootPairs_pantisem + MeanRootPairs_prefmove
+
+
+
+
+WK ~~ 0 * u11
+ST ~~ 0 * u11"
+
+# simple model without groups
+w3LatND_fit <- sem(w3LatND_mod, w3, meanstructure = TRUE)
+summary(w3LatND_fit, fit = TRUE)
+
+
+fscores <- lavPredict(w3LatND_fit)  # matrix, not a list
+idx     <- lavInspect(w3LatND_fit, "case.idx")  # single vector
+
+# merge the scores back in, following the lavaan documentation for single-group models:
+for (fs in colnames(fscores)) {
+  w3[idx, fs] <- fscores[, fs]
+}
+
+
+```
+
+```{r}
+# model used as the basis for the coefficient table
+SEM_w3 <- table_results(w3LatND_fit)|>
+    mutate(label = label |>
+               str_replace("MeanRootPairs_", "Mrp.") |>
+               str_replace("=~", ".BY.") |>
+               str_replace("~~", ".WITH.") |>
+               str_replace("~1", "") |>
+               str_replace("^\\.", "Means.")) |>
+  filter(!str_starts(label, "Variances"),
+         !str_starts(label, "Means")) |> 
+  select(label, est_sig, se, confint) 
+
+
+SEM_w3|> 
+  kable(
+    format = "latex",
+    booktabs = TRUE,
+    col.names = c("Label",
+                  "Est.", "SE", "95\\% CI"),
+    escape = FALSE
+  ) 
+
+
+```
+
+
+```{r}
+#| label: fig-W3NdBoxplots
+#| fig-cap: Wave 3 Nondifferentiation 
+#| eval: true
+#| include: true
+#| fig-height: 15
+#| fig-show: hold
+
+
+
+
+
+ MRP_w3 <- 
+  w3 %>% 
+  select(pid,
+          "Q1: pbsjo\n5 items, 5-likert, multi" = MeanRootPairs_pbsjo, 
+         "Q2: pbsjperc\n5 items, 5-likert, multi" = MeanRootPairs_pbsjperc,
+         "Q3: puss\n08 items, 5-likert, uni" = MeanRootPairs_puss, 
+         "Q5: pladder\n5 items, 11-likert, multi" = MeanRootPairs_pladder, 
+         "Q10: pconcern\n12 items, 11-likert, uni" = MeanRootPairs_pconcern, 
+         "Q11: pconsp\n5 items, 5-likert, uni" = MeanRootPairs_pconsp, 
+         "Q12: pgendeq\n6 items, 5-likert, uni" = MeanRootPairs_pgendeq, 
+         "Q13: pregident\n5 items, 5-likert, uni" = MeanRootPairs_pregident,
+         "Q18: pinfrasat\n18 items, 5-likert, uni" = MeanRootPairs_pinfrasat, 
+         "Q22: pclimattit\n6 items, 5-likert, multi" = MeanRootPairs_pclimattit,
+         "Q26: pcliminfra\n5 items, 5-likert, uni" = MeanRootPairs_pcliminfra, 
+         "Q27: ppopul\n5 items, 5-likert, uni" = MeanRootPairs_ppopul,
+         "Q29: pantisem\n6 items, 5-likert, multi" = MeanRootPairs_pantisem, 
+         "Q30: prefmove\n6 items, 5-likert, multi" = MeanRootPairs_prefmove,
+         "Q31: pimmparty\n7 items, 11-likert, multi" = MeanRootPairs_pimmparty, 
+         "Q34: ptaxparty\n7 items, 11-likert, multi" = MeanRootPairs_ptaxparty,
+         "Q37: pclimparty\n7 items, 11-likert, multi" = MeanRootPairs_pclimparty, 
+         "Q40: pgendparty\n7 items, 11-likert, multi" = MeanRootPairs_pgendparty) %>% 
+  
+  # long format
+  pivot_longer(cols = 2:19) %>%
+  
+   
+  ggplot(aes(name, value)) +
+  
+  geom_violin(scale = "count", linewidth = 0.8) +
+  
+  geom_boxplot(width = 0.15, color = "black") +
+  
+ 
+   labs(caption = "Nondifferentiation (Mean Root of Pairs) in Wave 3",
+        x = "", 
+        y = "Mean root of pairs") +
+      
+  papaja::theme_apa() +
+   
+  theme(axis.text.x = element_text(angle = 90), 
+        axis.text.y = element_text(size = 10),
+        #axis.ticks.x = element_blank(),
+        axis.title.y = element_text(size = 14),
+        axis.line.x = element_blank(),
+        panel.grid.major.y = element_line(color = "#404040", linewidth = 0.02),
+        panel.grid.minor.y = element_line(color = "#404040", linewidth = 0.02),
+        plot.caption = element_text(size = 14))
+  
+  
+   
+MRP_w3
+
+
+```
+
+
+
+
+
+
+# Join w1, w2, w3
+
+
+```{r}
+#| label: join-w1-w2-and-w3
+#| eval: true
+
+
+w1t_sensan <- 
+  w1 |>
+  select(lfd, pid, hid, Education, Employment, Gender, ChildHH, Mig, Interviewmode, BreakOff, ppanelcons, NonrespRatio_sensan = NonrespRatio, TargetGroup,
+         # "&" intersects the two selections: keep sensan columns that
+         # match any of the listed patterns
+         contains("sensan") &c(
+         contains("Age_cat"), contains("Extr_"), contains("Mid_"), contains("EquivIncome_S"),  contains("Speeding_"), contains("Interviewmode"), contains("TargetGr"), contains("FrTMis_"), contains("MeanRootPairs"))  
+  ) |> 
+  rename_with(.fn = function(.x){paste0(.x,"_w1")},
+               .cols = -c(lfd, pid, hid)) #|> 
+
+w1t_Sample <- 
+  w1 |>
+  filter(Sample == "Sample") |> 
+  select(pid,
+         contains("Sample") &c(
+         contains("Age_cat"), contains("Extr_"), contains("Mid_"), contains("EquivIncome_S"),  contains("Speeding_"), contains("Interviewmode"), contains("FrTMis_"), contains("MeanRootPairs")), 
+#         starts_with("WK_"), starts_with("ST_")),
+         NonrespRatio_Sample = NonrespRatio
+  )|> 
+  rename_with(.fn = function(.x){paste0(.x,"_w1")},
+               .cols = -c(pid)) |> 
+  mutate(Sample = "Sample")
+
+
+
+
+
+w2t <- 
+  w2 |>
+ 
+  select(lfd,  Interviewmode, BreakOff, Extr, Mid, Speeding, FrTMis, NonrespRatio, contains("MeanRootPairs")) |> 
+         #WK, ST, , 
+   mutate(Participation = "Participated") |> 
+   rename_with(.fn = function(.x){paste0(.x,"_w2")},
+               .cols = -c(lfd)) 
+
+w3t <-
+  w3 |> 
+  select(pid,  Interviewmode, BreakOff, Extr, Mid, Speeding, FrTMis, NonrespRatio, contains("MeanRootPairs")) |>    #WK, ST, , 
+    mutate(Participation = "Participated") |> 
+   rename_with(.fn = function(.x){paste0(.x,"_w3")},
+               .cols = -c(pid))
+
+waves <- 
+  w1t_sensan |>
+  left_join(w1t_Sample, by = "pid") |> 
+  left_join(w2t, by = "lfd") |> 
+  left_join(w3t, by = "pid") |> 
+ 
+  mutate(
+    Participation_w2 = case_when(
+     
+      is.na(Participation_w2) ~ "Not participated", 
+      TRUE ~ Participation_w2),
+    Participation_w2 = factor(Participation_w2, levels = c("Participated", "Not participated")),
+    
+    
+    Participation_w3 = case_when(
+      is.na(Participation_w3) ~ "Not participated", 
+      TRUE ~ Participation_w3),
+    Participation_w3 = factor(Participation_w3, levels = c("Participated", "Not participated"))
+  )  
+
+waves |> names()
+```
+
+
+# Categorize Nondiff
+
+```{r}
+nondiff_ratio <- function(data, item_cols, mode_var,
+                          subgroup_var = NULL, subgroup_val = NULL) {
+  
+  ref_data <- if (!is.null(subgroup_var)) {
+    data |> filter(.data[[subgroup_var]] == subgroup_val)
+  } else data
+  
+  p66_by_mode <- ref_data |>
+    group_by(.data[[mode_var]]) |>
+    summarise(across(all_of(item_cols),
+                     ~ quantile(.x, 0.66, na.rm = TRUE),
+                     .names = "p66_{.col}"),
+              .groups = "drop")
+  
+  p66_cols <- paste0("p66_", item_cols)
+  
+  # Explicit filter before pipeline — avoids '.' placeholder issue
+  working_data <- if (!is.null(subgroup_var)) {
+    data |> filter(.data[[subgroup_var]] == subgroup_val)
+  } else data
+  
+  working_data |>
+    left_join(p66_by_mode, by = mode_var) |>
+    rowwise() |>
+    mutate(
+      n_high  = sum(c_across(all_of(item_cols)) > c_across(all_of(p66_cols)), na.rm = TRUE),
+      n_valid = sum(!is.na(c_across(all_of(item_cols)))),
+      ratio   = case_when(          # <- these three lines replace if_else(...)
+            n_valid == 0 ~ NA_real_,
+            n_high  == 0 ~ 0,
+            TRUE         ~ n_high / n_valid
+        )
+    ) |>
+    ungroup() |>
+    mutate(nd_cat = factor(case_when(
+      is.na(ratio)  ~ NA_character_,  # <- also catch NA here
+      ratio == 0   ~ "Never",
+      ratio <  0.5 ~ "Sometimes (0-50%)",
+      ratio >= 0.5 ~ "Often (>=50%)"
+    ), levels = c("Never", "Sometimes (0-50%)", "Often (>=50%)"))) |>
+    select(pid, nd_cat, ratio)
+}
+# resolve the item vectors to character in advance
+nd_w1Str_Sample_raw  <- waves |> select(contains("_Sample") & contains("_w1") &
+  (contains("pcohes") | contains("exp") | contains("univtrad") | contains("pgrpknow"))) |> names()
+
+nd_w1Wk_Sample_raw   <- waves |> select(contains("_Sample") & contains("_w1") &
+  (contains("insttrust") | contains("pgrpsymp") | contains("pfrspcons") | contains("ppopul"))) |> names()
+
+nd_w1Str_sensan_raw <- waves |> select(contains("_sensan") & contains("_w1") &
+  (contains("pcohes") | contains("exp") | contains("univtrad") | contains("pgrpknow"))) |> names()
+
+nd_w1Wk_sensan_raw  <- waves |> select(contains("_sensan") & contains("_w1") &
+  (contains("insttrust") | contains("pgrpsymp") | contains("pfrspcons") | contains("ppopul"))) |> names()
+
+nd_w2Wk_raw <- waves |> select(contains("MeanRoot") & (
+  contains("plifesat") | contains("pinform") | contains("pglob") | contains("pedugoal") | contains("pnarcism") | contains("pdiscrim") | contains("pgender") | contains("pauthor") | contains("pactivity"))) |> names()
+
+nd_w2St_raw <- waves |> select(contains("MeanRoot") & (contains("ppertrust") | contains("pfathbeh") | contains("pmothbeh") | contains("psocdes") | contains("pschwartz"))) |> names()
+
+nd_w3Wk_raw <- waves |> select(contains("MeanRoot") & (contains("puss_") | contains("pconcern") | contains("pconsp") | contains("pgendeq") | contains("pregident") | contains("pinfrasat") | contains("pcliminfra") | contains("ppopul"))) |> names()
+
+nd_w3St_raw <- waves |> select(contains("MeanRoot") & (contains("pbsjo") | contains("pbsjperc") | contains("pladder") | contains("pclimattit") | contains("pantisem") | contains("prefmove") | contains("pimmparty") | contains("ptaxparty") | contains("pclimparty") | contains("pgendparty")))  |> names()
+
+
+# function calls with character vectors
+waves <- waves |>
+  left_join(
+    nondiff_ratio(
+      waves |> filter(!is.na(Interviewmode_w1)),
+      nd_w1Str_Sample_raw, "Interviewmode_w1") |>
+      rename(NondiffSt66_Sample_w1 = nd_cat, Ratio_NDStr_w1_Sample = ratio),
+    by = "pid") |>
+  left_join(
+    nondiff_ratio(
+      waves |> filter(!is.na(Interviewmode_w1)),
+      nd_w1Wk_Sample_raw, "Interviewmode_w1") |>
+      rename(NondiffWk66_Sample_w1 = nd_cat, Ratio_NDWk_w1_Sample = ratio),
+    by = "pid") |>
+  # sensan and the remaining waves as before - no filtering needed
+  left_join(
+    nondiff_ratio(
+      waves |> filter(!is.na(Interviewmode_w1)),
+      nd_w1Str_sensan_raw, "Interviewmode_w1") |>
+      rename(NondiffSt66_sensan_w1 = nd_cat, Ratio_NDStr_w1_sensan = ratio),
+    by = "pid") |>
+  left_join(
+    nondiff_ratio(
+      waves |> filter(!is.na(Interviewmode_w1)),
+      nd_w1Wk_sensan_raw, "Interviewmode_w1") |>
+      rename(NondiffWk66_sensan_w1 = nd_cat, Ratio_NDWk_w1_sensan = ratio),
+    by = "pid") |>
+  left_join(
+    nondiff_ratio(waves |> filter(Participation_w2 == "Participated"),
+                  nd_w2St_raw, "Interviewmode_w2") |>
+      rename(NondiffSt66_w2 = nd_cat, Ratio_NDStr_w2 = ratio),
+    by = "pid") |>
+  left_join(
+    nondiff_ratio(waves |> filter(Participation_w2 == "Participated"),
+                  nd_w2Wk_raw, "Interviewmode_w2") |>
+      rename(NondiffWk66_w2 = nd_cat, Ratio_NDWk_w2 = ratio),
+    by = "pid") |>
+  left_join(
+    nondiff_ratio(waves |> filter(Participation_w3 == "Participated"),
+                  nd_w3St_raw, "Interviewmode_w3") |>
+      rename(NondiffSt66_w3 = nd_cat, Ratio_NDStr_w3 = ratio),
+    by = "pid") |>
+  left_join(
+    nondiff_ratio(waves |> filter(Participation_w3 == "Participated"),
+                  nd_w3Wk_raw, "Interviewmode_w3") |>
+      rename(NondiffWk66_w3 = nd_cat, Ratio_NDWk_w3 = ratio),
+    by = "pid")
+
+
+waves <- 
+  waves |> 
+  # Recode non-participants to "Not participated"
+  mutate(
+    NondiffSt66_w2 = factor(case_when(
+      Participation_w2 == "Not participated" ~ "Not participated",
+      TRUE ~ as.character(NondiffSt66_w2)), levels = c("Never","Sometimes (0-50%)","Often (>=50%)","Not participated")),
+    NondiffWk66_w2 = factor(case_when(
+      Participation_w2 == "Not participated" ~ "Not participated",
+      TRUE ~ as.character(NondiffWk66_w2)), levels = c("Never","Sometimes (0-50%)","Often (>=50%)","Not participated")),
+    NondiffSt66_w3 = factor(case_when(
+      Participation_w3 == "Not participated" ~ "Not participated",
+      TRUE ~ as.character(NondiffSt66_w3)), levels = c("Never","Sometimes (0-50%)","Often (>=50%)","Not participated")),
+    NondiffWk66_w3 = factor(case_when(
+      Participation_w3 == "Not participated" ~ "Not participated",
+      TRUE ~ as.character(NondiffWk66_w3)), levels = c("Never","Sometimes (0-50%)","Often (>=50%)","Not participated"))
+  )
+
+
+waves |> count(Interviewmode_w2,NondiffSt66_w2) 
+waves |> filter(Sample == "Sample") |>filter(is.na(NondiffSt66_Sample_w1)) |> 
+  select(!contains("w2")& !contains("w3")&!contains("sensan")) |> #select(-c(pid, hid, lfd)) |> 
+  ai()
+```
+
+
+# INR66
+
+```{r}
+# w1 sensan = all cases, unfiltered by sample
+p66_INR_w1_sensan <- waves |>
+  group_by(Interviewmode_w1) |>
+  summarise(p66_sensan = quantile(NonrespRatio_sensan_w1, 0.66, na.rm = TRUE), .groups = "drop")
+
+# w1 Sample = Sample subgroup only
+p66_INR_w1_Sample <- waves |>
+  group_by(Interviewmode_w1) |>
+  summarise(p66_Sample = quantile(NonrespRatio_Sample_w1, 0.66, na.rm = TRUE), .groups = "drop")
+
+# w2 Sample 
+p66_INR_w2 <- waves |>
+  filter(Participation_w2 == "Participated") |> 
+  group_by(Interviewmode_w2) |>
+  summarise(p66_w2 = quantile(NonrespRatio_w2, 0.66, na.rm = TRUE), .groups = "drop")
+
+# w3 Sample 
+p66_INR_w3 <- waves |>
+  filter(Participation_w3 == "Participated") |> 
+  group_by(Interviewmode_w3) |>
+  summarise(p66_w3 = quantile(NonrespRatio_w3, 0.66, na.rm = TRUE), .groups = "drop")
+
+print(p66_INR_w1_sensan)
+print(p66_INR_w1_Sample)
+print(p66_INR_w2)
+print(p66_INR_w3)
+
+waves <- 
+  waves |>
+  left_join(p66_INR_w1_sensan, by = "Interviewmode_w1") |>
+  left_join(p66_INR_w1_Sample,   by = "Interviewmode_w1") |>
+  left_join(p66_INR_w2, by = "Interviewmode_w2") |>
+  left_join(p66_INR_w3, by = "Interviewmode_w3") |>
+  mutate(
+    INR66_sensan_w1 = factor(case_when(
+      is.na(NonrespRatio_sensan_w1)     ~ NA_character_,
+      NonrespRatio_sensan_w1 > p66_sensan ~ "High",
+      TRUE                         ~ "Not high"),
+      levels = c("Not high", "High")),
+
+    INR66_Sample_w1 = factor(case_when(
+      is.na(NonrespRatio_Sample_w1) ~ NA_character_, #| Sample_w1 != "Sample" ~ NA_character_,
+      NonrespRatio_Sample_w1 > p66_Sample ~ "High",
+      TRUE                           ~ "Not high"),
+      levels = c("Not high", "High")),
+
+    INR66_w2 = factor(case_when(
+      Participation_w2 == "Not participated" ~ "Not participated",
+      is.na(NonrespRatio_w2)                 ~ NA_character_,
+      NonrespRatio_w2 > p66_w2             ~ "High",
+      TRUE                                     ~ "Not high"),
+      levels = c("Not high", "High", "Not participated")),
+
+    INR66_w3 = factor(case_when(
+      Participation_w3 == "Not participated"   ~ "Not participated",
+      is.na(NonrespRatio_w3)                   ~ NA_character_,
+      NonrespRatio_w3 > p66_w3                 ~ "High",
+      TRUE                                     ~ "Not high"),
+      levels = c("Not high", "High", "Not participated"))
+  ) |>
+  select(-p66_sensan, -p66_Sample, -p66_w2, -p66_w3)
+
+waves |> select(starts_with("INR66")) |> summary()
+
+
+```
+
+
+
+```{r}
+waves |> filter(is.na(NondiffSt66_w2)) |> 
+   select(!contains("w1") & !contains("w3")) |> ai()
+
+waves |> frq(NondiffSt66_w2)
+```
+
+
+
+# Summary Table
+
+```{r}
+p_load(gtsummary)
+
+# ── 1. Helper function: tbl_summary by interview mode ───────────────────────────
+make_tbl <- function(data, mode_label) {
+  data |>
+    filter(Interviewmode == mode_label) |>
+    mutate(across(
+      any_of(c("Extremes", "Midpoint", "FrTMis", "INR66")),
+      ~ as.character(.x) |> na_if("Not applicable") |> factor() |> fct_drop()
+    )) |>
+    select(TargetGroup, Age_3grp, Gender, Migration, Education, ChildHH, EquivIncome,
+           Extremes, Midpoint, Speeding, FrTMis, INR66,
+           NondiffStrong, NondiffWeak, BreakOff) |>
+    tbl_summary(
+      statistic = all_categorical() ~ "{n} ({p}%)",
+      missing   = "no",
+      label     = list(
+        TargetGroup            ~ "Target Group",
+        Age_3grp      ~ "Age group",
+        Gender        ~ "Gender",
+        Migration     ~ "Migration background",
+        Education     ~ "Education",
+        ChildHH       ~ "Child in Household",
+        EquivIncome   ~ "Equivalized Income",
+        Extremes      ~ "Extremes Selection",
+        Midpoint      ~ "Midpoint Selection",
+        Speeding      ~ "Speeding",
+        FrTMis        ~ "Open Question Nonresponse",
+        INR66         ~ "Closed Question Nonresponse",
+        NondiffStrong ~ "Strong Nondifferentiation",
+        NondiffWeak   ~ "Weak Nondifferentiation",
+        BreakOff      ~ "Break-Off"
+      )
+    ) |>
+    bold_labels() |>
+    italicize_levels()
+}
+
+
+# ── 2. Helper function: reshape and filter by wave ──────────────────────────────
+prep_wave <- function(suffix, wave_label,
+                      extr, mid, speed, frtmis, inr, ndst, ndwk,
+                      age_cat, equivinc,
+                      part_var    = NULL,
+                      sample_only = FALSE) {
+  d <- waves |>
+    select(
+      TargetGroup = TargetGroup_w1,
+      Education     = Education_w1,
+      Gender        = Gender_w1,
+      ChildHH       = ChildHH_w1,
+      Migration     = Mig_w1,
+      Age_cat       = all_of(age_cat),
+      EquivIncome   = all_of(equivinc),
+      Interviewmode = all_of(paste0("Interviewmode_", suffix)),
+      BreakOff      = all_of(paste0("BreakOff_", suffix)),
+      Extremes      = all_of(extr),
+      Midpoint      = all_of(mid),
+      Speeding      = all_of(speed),
+      FrTMis        = all_of(frtmis),
+      INR66         = all_of(inr),
+      NondiffStrong = all_of(ndst),
+      NondiffWeak   = all_of(ndwk),
+      any_of(c(part_var, "Sample"))
+    ) |>
+    mutate(
+      BreakOff = case_when(
+        as.character(BreakOff) == "No Break-off" ~ "No",
+        as.character(BreakOff) == "Break-off"    ~ "Yes",
+        TRUE ~ NA_character_
+      ) |> factor(levels = c("No", "Yes")),
+
+      INR66 = case_when(
+        as.character(INR66) == "Yes"              ~ "High",
+        as.character(INR66) == "No"               ~ "Not high",
+        as.character(INR66) == "High"             ~ "High",
+        as.character(INR66) == "Not high"         ~ "Not high",
+        as.character(INR66) == "Not participated" ~ NA_character_,
+        TRUE ~ NA_character_
+      ) |> factor(levels = c("Not high", "High")),
+
+      NondiffStrong = if_else(
+        as.character(NondiffStrong) == "Not participated", NA_character_, as.character(NondiffStrong)
+      ) |> factor() |> fct_drop(),
+
+      NondiffWeak = if_else(
+        as.character(NondiffWeak) == "Not participated", NA_character_, as.character(NondiffWeak)
+      ) |> factor() |> fct_drop()
+    )
+
+  if (!is.null(part_var)) d <- d |> filter(.data[[part_var]] == "Participated")
+  if (sample_only)        d <- d |> filter(Sample == "Sample")
+
+  d |>
+    mutate(
+      Age_3grp = case_when(
+        str_detect(Age_cat, "T1") ~ "18–40 yrs",
+        str_detect(Age_cat, "T2") ~ "41–60 yrs",
+        str_detect(Age_cat, "T3") ~ "> 60 yrs"
+      ) |> factor(levels = c("18–40 yrs", "41–60 yrs", "> 60 yrs")),
+      Interviewmode = factor(Interviewmode, levels = c("PAPI", "CAWI"))
+    ) |>
+    filter(!is.na(Interviewmode))
+}
+
+# ── 3. Helper function: merge PAPI + CAWI with N in the header ──────────────────────
+build_wave_tbl <- function(d, wave_label) {
+  n_papi <- d |> filter(Interviewmode == "PAPI") |> nrow()
+  n_cawi <- d |> filter(Interviewmode == "CAWI") |> nrow()
+
+  tbl_merge(
+    tbls        = list(make_tbl(d, "PAPI"), make_tbl(d, "CAWI")),
+    tab_spanner = c("**PAPI**", "**CAWI**")   # spanning header = mode
+  ) |>
+    modify_header(
+      stat_0_1 ~ paste0("**PAPI**  \nN = ", format(n_papi, big.mark = ",")),
+      stat_0_2 ~ paste0("**CAWI**  \nN = ", format(n_cawi, big.mark = ","))
+    )
+}
+
+# ── 4. Prepare data ───────────────────────────────────────────────────────────
+d_w1_sens <- prep_wave(
+  suffix = "w1", wave_label = "Wave 1 (sensan)",
+  extr  = "Extr_sensan_w1",        mid    = "Mid_sensan_w1",
+  speed = "Speeding_sensan_w1",    frtmis = "FrTMis_sensan_w1",
+  inr   = "INR66_sensan_w1",
+  ndst  = "NondiffSt66_sensan_w1", ndwk   = "NondiffWk66_sensan_w1",
+  age_cat = "Age_cat_sensan_w1",   equivinc = "EquivIncome_sensan_w1"
+)
+
+d_w1_samp <- prep_wave(
+  suffix = "w1", wave_label = "Wave 1 (Sample)",
+  extr  = "Extr_Sample_w1",        mid    = "Mid_Sample_w1",
+  speed = "Speeding_Sample_w1",    frtmis = "FrTMis_Sample_w1",
+  inr   = "INR66_Sample_w1",
+  ndst  = "NondiffSt66_Sample_w1", ndwk   = "NondiffWk66_Sample_w1",
+  age_cat = "Age_cat_Sample_w1",   equivinc = "EquivIncome_Sample_w1",
+  sample_only = TRUE
+)
+
+d_w12 <- prep_wave(
+  suffix = "w2", wave_label = "Wave 2",
+  extr  = "Extr_w2",     mid    = "Mid_w2",
+  speed = "Speeding_w2", frtmis = "FrTMis_w2",
+  inr   = "INR66_w2",
+  ndst  = "NondiffSt66_w2", ndwk = "NondiffWk66_w2",
+  age_cat  = "Age_cat_sensan_w1", equivinc = "EquivIncome_sensan_w1",
+  part_var = "Participation_w2"
+)
+
+d_w3 <- prep_wave(
+  suffix = "w3", wave_label = "Wave 3",
+  extr  = "Extr_w3",     mid    = "Mid_w3",
+  speed = "Speeding_w3", frtmis = "FrTMis_w3",
+  inr   = "INR66_w3",
+  ndst  = "NondiffSt66_w3", ndwk = "NondiffWk66_w3",
+  age_cat  = "Age_cat_sensan_w1", equivinc = "EquivIncome_sensan_w1",
+  part_var = "Participation_w3"
+)
+
+# ── 5. Build tables ───────────────────────────────────────────────────────────
+tbl_w1_sens <- build_wave_tbl(d_w1_sens, "Wave 1 (sensan)")
+tbl_w1_samp <- build_wave_tbl(d_w1_samp, "Wave 1 (Sample)")
+tbl_w12     <- build_wave_tbl(d_w12,     "Wave 2")
+tbl_w3      <- build_wave_tbl(d_w3,      "Wave 3")
+
+# ── 6. Merge all waves side by side ───────────────────────────────────────────
+tbl_final <- tbl_merge(
+  tbls        = list(tbl_w1_sens, tbl_w1_samp, tbl_w12, tbl_w3),
+  tab_spanner = c("**Wave 1 – sensan**", "**Wave 1 – Sample**",
+                  "**Wave 2**",            "**Wave 3**")
+) |>
+ # modify_caption("**Sample Characteristics by Wave and Interview Mode**") |>
+  modify_header(label ~ "**Sample Characteristics**")
+
+tbl_final
+
+
+
+```
+
+
+```{r}
+p_load(kableExtra, stringr)
+
+latex_raw <- tbl_final |>
+  as_kable_extra(
+    format   = "latex",
+    booktabs = TRUE,
+    escape   = FALSE
+  ) |>
+  as.character()
+
+latex_clean <- latex_raw |>
+  # bold spans → \textbf{}
+  str_replace_all(
+    '<span style=" font-weight: bold;[^"]*"[^>]*>(.*?)</span>',
+    '\\\\textbf{\\1}'
+  ) |>
+  # italic spans → \textit{}
+  str_replace_all(
+    '<span style="  font-style: italic;[^"]*"[^>]*>(.*?)</span>',
+    '\\\\textit{\\1}'
+  )
+
+cat(latex_clean)
+```
+
+
+### Dummyize Sample
+
+
+```{r}
+waves |> select(-c(contains("MeanRoot"), contains("Ratio"), lfd, pid, hid)) |> ai()
+```
+```{r}
+# LCA input dummies, main sample (saved below as waves_dummies_sample.RData
+# for the LCA scripts in the wave folders).
+# Coding: 1 = reference/no, 2 = yes (Mplus CATEGORICAL, see README legend)
+waves_dummies_Sample <- 
+  waves |>
+  select(-contains("_sensan")) |> 
+  filter(Sample == "Sample") |> 
+  mutate(
+    # --- Demographics ---
+    AGET1   = case_when(Age_cat_Sample_w1 == "Age_T1[18.0-40.0]"  ~ 2, TRUE ~ 1),
+    AGET3   = case_when(Age_cat_Sample_w1 == "Age_T3[60.0-97.0]"  ~ 2, TRUE ~ 1),
+    MIGY    = case_when(Mig_w1            == "Yes"                 ~ 2, TRUE ~ 1),
+    GENF    = case_when(Gender_w1         == "Female"              ~ 2, TRUE ~ 1),
+    
+    EDTERT  = case_when(Education_w1 == "Tertiary (ISCED 5-8)"    ~ 2, TRUE ~ 1),
+    EDNA    = case_when(Education_w1 == "missing"                  ~ 2, TRUE ~ 1),
+    
+    EMPP    = case_when(Employment_w1 == "Part-time or flexible"              ~ 2, TRUE ~ 1),
+    EMPNO   = case_when(Employment_w1 == "Not currently employed, training"   ~ 2, TRUE ~ 1),
+    EMPRET  = case_when(Employment_w1 == "Retirement"                         ~ 2, TRUE ~ 1),
+    EMPNA   = case_when(Employment_w1 == "missing"                            ~ 2, TRUE ~ 1),
+    
+    KIDY    = case_when(ChildHH_w1 == "Child in hh" ~ 2, TRUE ~ 1),
+    KIDNA   = case_when(ChildHH_w1 == "missing"      ~ 2, TRUE ~ 1),
+    
+    INCT1   = case_when(EquivIncome_Sample_w1 == "EquivIncome_T1min" ~ 2, TRUE ~ 1),
+    INCT3   = case_when(EquivIncome_Sample_w1 == "EquivIncome_T3max" ~ 2, TRUE ~ 1),
+    INCNA   = case_when(EquivIncome_Sample_w1 == "missing"           ~ 2, TRUE ~ 1),
+    
+    # --- Target Group ---
+    TGANC   = case_when(TargetGroup_w1 == "Anchor" ~ 2, TRUE ~ 1),
+    
+    # --- Extreme Responding ---
+    EXT1    = case_when(Extr_Sample_w1 == "High" ~ 2, TRUE ~ 1),
+    EXT2    = case_when(Extr_w2        == "High" ~ 2, TRUE ~ 1),
+    EXT3    = case_when(Extr_w3          == "High" ~ 2, TRUE ~ 1),
+    
+    # --- Midpoint Responding ---
+    MID1    = case_when(Mid_Sample_w1 == "High" ~ 2, TRUE ~ 1),
+    MID2    = case_when(Mid_w2        == "High" ~ 2, TRUE ~ 1),
+    MID3    = case_when(Mid_w3          == "High" ~ 2, TRUE ~ 1),
+    
+    # --- Break-Off ---
+    BO1     = case_when(BreakOff_w1 == "Break-off" ~ 2, TRUE ~ 1),
+    BO2     = case_when(BreakOff_w2 == "Break-off" ~ 2, TRUE ~ 1),
+    BO3     = case_when(BreakOff_w3   == "Break-off" ~ 2, TRUE ~ 1),
+    
+    # --- Speeding ---
+    SPEE1   = case_when(Speeding_Sample_w1 == "Speeding" ~ 2, TRUE ~ 1),
+    SPEE2   = case_when(Speeding_w2        == "Speeding" ~ 2, TRUE ~ 1),
+    SPEE3   = case_when(Speeding_w3          == "Speeding" ~ 2, TRUE ~ 1),
+    
+    # --- Free Text Missingness ---
+    FTM1    = case_when(FrTMis_Sample_w1 == "High" ~ 2, TRUE ~ 1),
+    FTM2    = case_when(FrTMis_w2        == "High" ~ 2, TRUE ~ 1),
+    FTM3    = case_when(FrTMis_w3          == "High" ~ 2, TRUE ~ 1),
+    
+    # --- Item Nonresponse ---
+    INR1    = case_when(INR66_Sample_w1 == "High" ~ 2, TRUE ~ 1),
+    INR2    = case_when(INR66_w2        == "High" ~ 2, TRUE ~ 1),
+    INR3    = case_when(INR66_w3          == "High" ~ 2, TRUE ~ 1),
+    
+    # --- Nondiff Strong Sometimes ---
+    NDSS1   = case_when(NondiffSt66_Sample_w1 == "Sometimes (0-50%)" ~ 2, TRUE ~ 1),
+    NDSS2   = case_when(NondiffSt66_w2        == "Sometimes (0-50%)" ~ 2, TRUE ~ 1),
+    NDSS3   = case_when(NondiffSt66_w3          == "Sometimes (0-50%)" ~ 2, TRUE ~ 1),
+    
+    # --- Nondiff Weak Often ---
+    NDWO1   = case_when(NondiffWk66_Sample_w1 == "Often (>=50%)" ~ 2, TRUE ~ 1),
+    NDWO2   = case_when(NondiffWk66_w2        == "Often (>=50%)" ~ 2, TRUE ~ 1),
+    NDWO3   = case_when(NondiffWk66_w3          == "Often (>=50%)" ~ 2, TRUE ~ 1),
+    
+    # --- Nondiff Strong Often ---
+    NDSO1   = case_when(NondiffSt66_Sample_w1 == "Often (>=50%)" ~ 2, TRUE ~ 1),
+    NDSO2   = case_when(NondiffSt66_w2        == "Often (>=50%)" ~ 2, TRUE ~ 1),
+    NDSO3   = case_when(NondiffSt66_w3          == "Often (>=50%)" ~ 2, TRUE ~ 1)
+  )
+
+
+waves_dummies_Sample |> select(AGET1:NDSO3) |> ai()
+
+# Check 1: all variables contain only the values 1 and 2
+waves_dummies_Sample |>
+  select(AGET1:NDSO3) |>
+  summarise(across(everything(), ~ paste(sort(unique(.)), collapse = ", "))) |>
+  t()
+
+# Check 2: cross-tabulation as a plausibility check for individual variables
+waves_dummies_Sample |> count(AGET1, Age_cat_Sample_w1)
+waves_dummies_Sample |> count(MIGY,  Mig_w1)
+waves_dummies_Sample |> count(INR1,  INR66_Sample_w1)
+waves_dummies_Sample |> count(NDSS1, NondiffSt66_Sample_w1)
+waves_dummies_Sample |> count(NDSO1, NondiffSt66_Sample_w1)
+
+waves |> filter(Sample == "Sample") |> count(Interviewmode_w1, NondiffSt66_Sample_w1)
+waves |> filter(Sample == "Sample") |>filter(is.na(NondiffSt66_Sample_w1)) |> 
+  select(!contains("w2")& !contains("w3")&!contains("sensan")) |> ai()
+
+# save for the LCA R scripts in the wave folders (they load ../waves_dummies_sample.RData)
+save(waves_dummies_Sample, file = file.path(userpath, "waves_dummies_sample.RData"))
+```
+
+
+```{r}
+
+waves_dummies_sensan <- 
+  waves |>
+  select(-contains("_Sample")) |> 
+  mutate(
+    # --- Demographics ---
+    AGET1   = case_when(Age_cat_sensan_w1 == "Age_T1[18.0-41.0]"  ~ 2, TRUE ~ 1),
+    AGET3   = case_when(Age_cat_sensan_w1 == "Age_T3[61.0-101.0]"  ~ 2, TRUE ~ 1),
+    MIGY    = case_when(Mig_w1            == "Yes"                 ~ 2, TRUE ~ 1),
+    GENF    = case_when(Gender_w1         == "Female"              ~ 2, TRUE ~ 1),
+    
+    EDTERT  = case_when(Education_w1 == "Tertiary (ISCED 5-8)"    ~ 2, TRUE ~ 1),
+    EDNA    = case_when(Education_w1 == "missing"                  ~ 2, TRUE ~ 1),
+    
+    EMPP    = case_when(Employment_w1 == "Part-time or flexible"              ~ 2, TRUE ~ 1),
+    EMPNO   = case_when(Employment_w1 == "Not currently employed, training"   ~ 2, TRUE ~ 1),
+    EMPRET  = case_when(Employment_w1 == "Retirement"                         ~ 2, TRUE ~ 1),
+    EMPNA   = case_when(Employment_w1 == "missing"                            ~ 2, TRUE ~ 1),
+    
+    KIDY    = case_when(ChildHH_w1 == "Child in hh" ~ 2, TRUE ~ 1),
+    KIDNA   = case_when(ChildHH_w1 == "missing"      ~ 2, TRUE ~ 1),
+    
+    INCT1   = case_when(EquivIncome_sensan_w1 == "EquivIncome_T1min" ~ 2, TRUE ~ 1),
+    INCT3   = case_when(EquivIncome_sensan_w1 == "EquivIncome_T3max" ~ 2, TRUE ~ 1),
+    INCNA   = case_when(EquivIncome_sensan_w1 == "missing"           ~ 2, TRUE ~ 1),
+    
+    # --- Target Group ---
+    TGANC   = case_when(TargetGroup_w1 == "Anchor" ~ 2, TRUE ~ 1),
+    
+    # --- Extreme Responding ---
+    EXT1    = case_when(Extr_sensan_w1 == "High" ~ 2, TRUE ~ 1),
+    EXT2    = case_when(Extr_w2        == "High" ~ 2, TRUE ~ 1),
+    EXT3    = case_when(Extr_w3          == "High" ~ 2, TRUE ~ 1),
+    
+    # --- Midpoint Responding ---
+    MID1    = case_when(Mid_sensan_w1 == "High" ~ 2, TRUE ~ 1),
+   
+    # --- Break-Off ---
+    BO1     = case_when(BreakOff_w1 == "Break-off" ~ 2, TRUE ~ 1),
+    
+    # --- Speeding ---
+    SPEE1   = case_when(Speeding_sensan_w1 == "Speeding" ~ 2, TRUE ~ 1),
+    
+    # --- Free Text Missingness ---
+    FTM1    = case_when(FrTMis_sensan_w1 == "High" ~ 2, TRUE ~ 1),
+    
+    # --- Item Nonresponse ---
+    INR1    = case_when(INR66_sensan_w1 == "High" ~ 2, TRUE ~ 1),
+    
+    # --- Nondiff Strong Sometimes ---
+    NDSS1   = case_when(NondiffSt66_sensan_w1 == "Sometimes (0-50%)" ~ 2, TRUE ~ 1),
+    
+    
+    # --- Nondiff Weak Often ---
+    NDWO1   = case_when(NondiffWk66_sensan_w1 == "Often (>=50%)" ~ 2, TRUE ~ 1),
+    
+    
+    # --- Nondiff Strong Often ---
+    NDSO1   = case_when(NondiffSt66_sensan_w1 == "Often (>=50%)" ~ 2, TRUE ~ 1),
+    
+    # Panelconsent
+    PCONS = case_when(ppanelcons_w1 == 1 ~ 2, TRUE ~1)
+  )
+
+waves_dummies_sensan |> select(AGET1:PCONS) |> ai()
+
+# Check 1: all variables contain only the values 1 and 2
+waves_dummies_sensan |>
+  select(AGET1:PCONS) |>
+  summarise(across(everything(), ~ paste(sort(unique(.)), collapse = ", "))) |>
+  t()
+
+# Check 2: cross-tabulation as a plausibility check for individual variables
+waves_dummies_sensan |> count(AGET1, Age_cat_sensan_w1)
+waves_dummies_sensan |> count(MIGY,  Mig_w1)
+waves_dummies_sensan |> count(INR1,  INR66_sensan_w1)
+waves_dummies_sensan |> count(NDSS1, NondiffSt66_sensan_w1)
+waves_dummies_sensan |> count(NDSO1, NondiffSt66_sensan_w1)
+
+# save for the sensitivity-analysis LCA R scripts in the wave1_*_sensan folders (they load ../waves_dummies_sensan.RData)
+save(waves_dummies_sensan, file = file.path(userpath, "waves_dummies_sensan.RData"))
+```
+
+```{r}
+waves_dummies_Sample |> ai()
+```
+
+```{r}
+#| echo: false
+#| include: true
+
+# sessionInfo()
+# > sessionInfo()
+# R version 4.5.2 (2025-10-31 ucrt)
+# Platform: x86_64-w64-mingw32/x64
+# Running under: Windows 11 x64 (build 26200)
+
+# Matrix products: default
+#   LAPACK version 3.12.1
+
+# locale:
+# [1] LC_COLLATE=German_Germany.utf8  LC_CTYPE=German_Germany.utf8    LC_MONETARY=German_Germany.utf8 LC_NUMERIC=C                   
+# [5] LC_TIME=German_Germany.utf8    
+
+# time zone: Europe/Berlin
+# tzcode source: internal
+
+# attached base packages:
+# [1] grid      stats     graphics  grDevices utils     datasets  methods   base     
+
+# other attached packages:
+#  [1] gtsummary_2.3.0            semPlot_1.1.7              tidySEM_0.2.10             patchwork_1.3.1            lavaan_0.6-21             
+#  [6] lubridate_1.9.4            forcats_1.0.1              stringr_1.5.1              dplyr_1.1.4                purrr_1.2.1               
+# [11] readr_2.2.0                tidyr_1.3.1                tibble_3.3.1               tidyverse_2.0.0            gridExtra_2.3             
+# [16] PerformanceAnalytics_2.0.8 xts_0.14.1                 zoo_1.8-14                 GGally_2.4.0               ggplot2_4.0.2             
+# [21] satisficingr_0.0.0.9000    DescTools_0.99.60          sandwich_3.1-1             modelsummary_2.4.0         survey_4.4-2              
+# [26] survival_3.8-3             Matrix_1.7-4               sjmisc_2.8.11              labelled_2.14.1            haven_2.5.5               
+# [31] knitr_1.50                 kableExtra_1.4.0           pacman_0.5.1              
+
+# loaded via a namespace (and not attached):
+#   [1] splines_4.5.2         cellranger_1.1.0      datawizard_1.3.1      XML_3.99-0.18         rpart_4.1.24          fastDummies_1.7.5    
+#   [7] lifecycle_1.0.5       Rdpack_2.6.6          globals_0.18.0        lattice_0.22-7        MASS_7.3-65           insight_1.5.2        
+#  [13] rockchalk_1.8.157     backports_1.5.0       magrittr_2.0.4        sass_0.4.10           openxlsx_4.2.8.1      Hmisc_5.2-3          
+#  [19] rmarkdown_2.29        qgraph_1.9.8          zip_2.3.3             gld_2.6.7             pbapply_1.7-4         DBI_1.2.3            
+#  [25] minqa_1.2.8           RColorBrewer_1.1-3    abind_1.4-8           expm_1.0-0            quadprog_1.5-8        nnet_7.3-20          
+#  [31] listenv_0.9.1         cards_0.6.1           arm_1.14-4            proto_1.0.0           texreg_1.39.5         parallelly_1.45.1    
+#  [37] commonmark_2.0.0      svglite_2.2.1         codetools_0.2-20      xml2_1.3.8            tidyselect_1.2.1      farver_2.1.2         
+#  [43] lme4_2.0-1            effectsize_1.0.3      stats4_4.5.2          base64enc_0.1-3       e1071_1.7-16          progressr_0.15.1     
+#  [49] Formula_1.2-5         papaja_0.1.3          systemfonts_1.3.1     dbscan_1.2.4          tools_4.5.2           progress_1.2.3       
+#  [55] Rcpp_1.1.1            glue_1.8.0            mnormt_2.1.2          xfun_0.52             MplusAutomation_1.2   withr_3.0.2          
+#  [61] fastmap_1.2.0         mitools_2.4           boot_1.3-32           litedown_0.7          digest_0.6.37         mi_1.2               
+#  [67] timechange_0.3.0      R6_2.6.1              colorspace_2.1-1      textshaping_1.0.1     gtools_3.9.5          markdown_2.0         
+#  [73] jpeg_0.1-11           generics_0.1.4        data.table_1.18.2.1   corpcor_1.6.10        class_7.3-23          prettyunits_1.2.0    
+#  [79] httr_1.4.7            htmlwidgets_1.6.4     parameters_0.29.2     semTools_0.5-8        ggstats_0.12.0        pkgconfig_2.0.3      
+#  [85] sem_3.1-16            gtable_0.3.6          Exact_3.3             S7_0.2.1              htmltools_0.5.8.1     carData_3.0-5        
+#  [91] scales_1.4.0          lmom_3.2              png_0.1-8             reformulas_0.4.4      rstudioapi_0.18.0     reshape2_1.4.4       
+#  [97] tzdb_0.5.0            coda_0.19-4.1         checkmate_2.3.2       nlme_3.1-168          nloptr_2.2.1          tinylabels_0.2.5     
+# [103] proxy_0.4-27          sjlabelled_1.2.0      rootSolve_1.8.2.4     parallel_4.5.2        nonnest2_0.5-8        foreign_0.8-90       
+# [109] pillar_1.11.1         vctrs_0.7.2           RANN_2.6.2            OpenMx_2.22.10        car_3.1-3             xtable_1.8-4         
+# [115] cluster_2.1.8.1       htmlTable_2.4.3       evaluate_1.0.4        pbivnorm_0.6.0        gsubfn_0.7            mvtnorm_1.3-3        
+# [121] cli_3.6.5             kutils_1.73           compiler_4.5.2        rlang_1.1.7           crayon_1.5.3          future.apply_1.20.0  
+# [127] fdrtool_1.2.18        labeling_0.4.3        plyr_1.8.9            fs_1.6.6              stringi_1.8.7         psych_2.5.6          
+# [133] pander_0.6.6          viridisLite_0.4.3     tables_0.9.31         lisrelToR_0.3         CompQuadForm_1.4.4    bayestestR_0.18.1    
+# [139] glasso_1.11           hms_1.1.4             future_1.67.0         rbibutils_2.4.1       gt_1.0.0              igraph_2.1.4         
+# [145] RcppParallel_5.1.11-1 readxl_1.4.5         
+
+```
