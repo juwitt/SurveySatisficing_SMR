@@ -120,11 +120,10 @@ corresponding author's GitHub.
 data (`.dta`) nor derived files (`waves_dummies_sample.RData`,
 `waves_dummies_sensan.RData`, `Data_LCA.dat`, Mplus `SAVEDATA` files).
 The only exception is `Sample_Summaries.xlsx` (Script 2), which contains
-summaries copied from the Mplus outputs rather than respondent data. The data are available upon request from the
+summaries copied from the Mplus outputs rather than respondent data. The data are available from the
 Research Data Centre Social Cohesion of the Research Institute Social
 Cohesion
-([RDC-RISC](https://fgz-risc-data.de/en/)). A significant proportion of
-the variables used in our analysis are also available as a scientific
+([RDC-RISC](https://fgz-risc-data.de/en/)) as a scientific
 use file
 ([doi:10.60532/scp.2021_22.w1.v1](https://doi.org/10.60532/scp.2021_22.w1.v1)).
 
